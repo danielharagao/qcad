@@ -1,0 +1,382 @@
+{
+  "schema": "architect-copilot.qcad-seed-tools.v1",
+  "principle": "Seed tools are exact QCAD action scriptFile values. No semantic wrappers.",
+  "entrypoint": "qcad -exec <script-file> [options]",
+  "tools": [
+    {
+      "tool": "scripts/Draw/Dimension/DimAligned/DimAligned.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimAligned/DimAligned.js",
+      "initFile": "scripts/Draw/Dimension/DimAligned/DimAlignedInit.js",
+      "label": "Aligned",
+      "defaultCommands": [
+        "dimaligned",
+        "da"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimHorizontal/DimHorizontal.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimHorizontal/DimHorizontal.js",
+      "initFile": "scripts/Draw/Dimension/DimHorizontal/DimHorizontalInit.js",
+      "label": "Horizontal",
+      "defaultCommands": [
+        "dimhor",
+        "dimhorizontal",
+        "dh"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimVertical/DimVertical.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimVertical/DimVertical.js",
+      "initFile": "scripts/Draw/Dimension/DimVertical/DimVerticalInit.js",
+      "label": "Vertical",
+      "defaultCommands": [
+        "dimver",
+        "dimvertical",
+        "dv"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Line/Line2P/Line2P.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Line/Line2P/Line2P.js",
+      "initFile": "scripts/Draw/Line/Line2P/Line2PInit.js",
+      "label": "Line from 2 Points",
+      "defaultCommands": [
+        "line",
+        "ln",
+        "li",
+        "l"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Polyline/DrawPolyline/DrawPolyline.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Polyline/DrawPolyline/DrawPolyline.js",
+      "initFile": "scripts/Draw/Polyline/DrawPolyline/DrawPolylineInit.js",
+      "label": "Draw Polyline",
+      "defaultCommands": [
+        "polyline",
+        "pl"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Shape/ShapeRectanglePP/ShapeRectanglePP.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Shape/ShapeRectanglePP/ShapeRectanglePP.js",
+      "initFile": "scripts/Draw/Shape/ShapeRectanglePP/ShapeRectanglePPInit.js",
+      "label": "Rectangle",
+      "defaultCommands": [
+        "rectangle",
+        "linerectangle",
+        "rect",
+        "re"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Shape/ShapeRectangleSize/ShapeRectangleSize.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Shape/ShapeRectangleSize/ShapeRectangleSize.js",
+      "initFile": "scripts/Draw/Shape/ShapeRectangleSize/ShapeRectangleSizeInit.js",
+      "label": "Rectangle with Size",
+      "defaultCommands": [
+        "rectanglesize",
+        "linerectanglesize",
+        "rs"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Text/Text.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Text/Text.js",
+      "initFile": "scripts/Draw/Text/TextInit.js",
+      "label": "Text",
+      "defaultCommands": [
+        "text",
+        "te"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/File/OpenFile/OpenFile.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/File/OpenFile/OpenFile.js",
+      "initFile": "scripts/File/OpenFile/OpenFileInit.js",
+      "label": "Open",
+      "defaultCommands": [
+        "open"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/File/SaveAs/SaveAs.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/File/SaveAs/SaveAs.js",
+      "initFile": "scripts/File/SaveAs/SaveAsInit.js",
+      "label": "Save As...",
+      "defaultCommands": [
+        "saveas"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Layer/AddLayer/AddLayer.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Layer/AddLayer/AddLayer.js",
+      "initFile": "scripts/Layer/AddLayer/AddLayerInit.js",
+      "label": "Add Layer",
+      "defaultCommands": [
+        "layeradd",
+        "addlayer",
+        "ya"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Layer/EditLayer/EditLayer.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Layer/EditLayer/EditLayer.js",
+      "initFile": "scripts/Layer/EditLayer/EditLayerInit.js",
+      "label": "Edit Layer",
+      "defaultCommands": [
+        "layeredit",
+        "ye"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Layer/ShowAllLayers/ShowAllLayers.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Layer/ShowAllLayers/ShowAllLayers.js",
+      "initFile": "scripts/Layer/ShowAllLayers/ShowAllLayersInit.js",
+      "label": "Show All Layers",
+      "defaultCommands": [
+        "layershowall",
+        "ys"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Modify/Offset/Offset.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Modify/Offset/Offset.js",
+      "initFile": "scripts/Modify/Offset/OffsetInit.js",
+      "label": "Offset (with Distance)",
+      "defaultCommands": [
+        "offset",
+        "of"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Modify/Rotate/Rotate.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Modify/Rotate/Rotate.js",
+      "initFile": "scripts/Modify/Rotate/RotateInit.js",
+      "label": "Rotate",
+      "defaultCommands": [
+        "rotate",
+        "ro"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Modify/Scale/Scale.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Modify/Scale/Scale.js",
+      "initFile": "scripts/Modify/Scale/ScaleInit.js",
+      "label": "Scale",
+      "defaultCommands": [
+        "scale",
+        "sz"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Modify/Translate/Translate.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Modify/Translate/Translate.js",
+      "initFile": "scripts/Modify/Translate/TranslateInit.js",
+      "label": "Move / Copy",
+      "defaultCommands": [
+        "move",
+        "mv"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Modify/Trim/Trim.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Modify/Trim/Trim.js",
+      "initFile": "scripts/Modify/Trim/TrimInit.js",
+      "label": "Trim",
+      "defaultCommands": [
+        "trim",
+        "extend",
+        "rm",
+        "xt"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Select/DeselectAll/DeselectAll.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Select/DeselectAll/DeselectAll.js",
+      "initFile": "scripts/Select/DeselectAll/DeselectAllInit.js",
+      "label": "Deselect All",
+      "defaultCommands": [
+        "deselectall",
+        "tn"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Select/SelectAll/SelectAll.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Select/SelectAll/SelectAll.js",
+      "initFile": "scripts/Select/SelectAll/SelectAllInit.js",
+      "label": "Select All",
+      "defaultCommands": [
+        "selectall",
+        "ta"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimAngular/DimAngular.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimAngular/DimAngular.js",
+      "initFile": "scripts/Draw/Dimension/DimAngular/DimAngularInit.js",
+      "label": "Angular",
+      "defaultCommands": [
+        "dimangular",
+        "dn"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimDiametric/DimDiametric.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimDiametric/DimDiametric.js",
+      "initFile": "scripts/Draw/Dimension/DimDiametric/DimDiametricInit.js",
+      "label": "Diametric",
+      "defaultCommands": [
+        "dimdia",
+        "dimdiametric",
+        "dd"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimOrdinate/DimOrdinate.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimOrdinate/DimOrdinate.js",
+      "initFile": "scripts/Draw/Dimension/DimOrdinate/DimOrdinateInit.js",
+      "label": "Ordinate (X/Y)",
+      "defaultCommands": [
+        "dimordinate",
+        "do"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimRadial/DimRadial.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimRadial/DimRadial.js",
+      "initFile": "scripts/Draw/Dimension/DimRadial/DimRadialInit.js",
+      "label": "Radial",
+      "defaultCommands": [
+        "dimrad",
+        "dimradial",
+        "dr"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimRegen/DimRegen.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimRegen/DimRegen.js",
+      "initFile": "scripts/Draw/Dimension/DimRegen/DimRegenInit.js",
+      "label": "Reset Label Position",
+      "defaultCommands": [
+        "dimregen",
+        "ds"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/DimRotated/DimRotated.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/DimRotated/DimRotated.js",
+      "initFile": "scripts/Draw/Dimension/DimRotated/DimRotatedInit.js",
+      "label": "Rotated (Linear)",
+      "defaultCommands": [
+        "dimlinear",
+        "dimrotated",
+        "dl"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Dimension/Leader/Leader.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Dimension/Leader/Leader.js",
+      "initFile": "scripts/Draw/Dimension/Leader/LeaderInit.js",
+      "label": "Leader",
+      "defaultCommands": [
+        "leader",
+        "dimlea",
+        "de",
+        "ld"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Line/LineAngle/LineAngle.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Line/LineAngle/LineAngle.js",
+      "initFile": "scripts/Draw/Line/LineAngle/LineAngleInit.js",
+      "label": "Line from Angle",
+      "defaultCommands": [
+        "lineangle",
+        "la"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Line/LineBisector/LineBisector.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Line/LineBisector/LineBisector.js",
+      "initFile": "scripts/Draw/Line/LineBisector/LineBisectorInit.js",
+      "label": "Angle Bisector",
+      "defaultCommands": [
+        "linebisector",
+        "bisector",
+        "lb"
+      ],
+      "qcadApi": "RGuiAction"
+    },
+    {
+      "tool": "scripts/Draw/Line/LineFreehand/LineFreehand.js",
+      "kind": "qcad-action-script",
+      "scriptFile": "scripts/Draw/Line/LineFreehand/LineFreehand.js",
+      "initFile": "scripts/Draw/Line/LineFreehand/LineFreehandInit.js",
+      "label": "Freehand Line",
+      "defaultCommands": [
+        "linefree",
+        "freehand",
+        "lf"
+      ],
+      "qcadApi": "RGuiAction"
+    }
+  ]
+}
