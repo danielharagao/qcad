@@ -6,15 +6,12 @@ on:
 jobs:
   build-macos-dmg:
     name: Build QCAD Architect Copilot DMG
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app
 
       - name: Build DMG
         env:
