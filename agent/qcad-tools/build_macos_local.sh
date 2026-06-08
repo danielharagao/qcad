@@ -6,6 +6,8 @@ DIST_DIR="$ROOT_DIR/dist"
 QT_DIR="$ROOT_DIR/.qt"
 QT_VERSION="${QT_VERSION:-5.15.2}"
 QT_ARCH="${QT_ARCH:-clang_64}"
+QT_INSTALL_METHOD="${QT_INSTALL_METHOD:-aqt}"
+ARCH_SUFFIX="$(uname -m)"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "This build script must be run on macOS."
@@ -24,10 +26,18 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
   exit 1
 fi
 
-python3 -m pip install --user --upgrade aqtinstall
-python3 -m aqt install-qt mac desktop "$QT_VERSION" "$QT_ARCH" -O "$QT_DIR"
-
-export PATH="$QT_DIR/$QT_VERSION/$QT_ARCH/bin:$PATH"
+if [[ "$QT_INSTALL_METHOD" == "brew" ]]; then
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Homebrew is required when QT_INSTALL_METHOD=brew."
+    exit 1
+  fi
+  brew list qt@5 >/dev/null 2>&1 || brew install qt@5
+  export PATH="$(brew --prefix qt@5)/bin:$PATH"
+else
+  python3 -m pip install --user --upgrade aqtinstall
+  python3 -m aqt install-qt mac desktop "$QT_VERSION" "$QT_ARCH" -O "$QT_DIR"
+  export PATH="$QT_DIR/$QT_VERSION/$QT_ARCH/bin:$PATH"
+fi
 
 qmake -v
 qmake CONFIG+=release qcad.pro
@@ -54,7 +64,7 @@ hdiutil create \
   -srcfolder "$DIST_DIR/dmg-root" \
   -ov \
   -format UDZO \
-  "$DIST_DIR/qcad-architect-copilot-macos-x86_64.dmg"
+  "$DIST_DIR/qcad-architect-copilot-macos-$ARCH_SUFFIX.dmg"
 
-shasum -a 256 "$DIST_DIR/qcad-architect-copilot-macos-x86_64.dmg" > "$DIST_DIR/SHA256SUMS-macos.txt"
+shasum -a 256 "$DIST_DIR/qcad-architect-copilot-macos-$ARCH_SUFFIX.dmg" > "$DIST_DIR/SHA256SUMS-macos.txt"
 ls -lh "$DIST_DIR"
