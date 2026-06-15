@@ -40,14 +40,15 @@ LAYER_DEFS = {
     "TEXT":    {"color": [255, 220, 0],   "lw": 0},
     "DIMS":    {"color": [255, 60, 60],   "lw": 9},
     "FILL":    {"color": [180, 180, 180], "lw": 0},
-    # material/surface layers (hatch patterns = texture)
-    "PISO":     {"color": [170, 170, 170], "lw": 9,  "pattern": "NET",    "scale": 30},  # porcelanato
-    "MADEIRA":  {"color": [170, 110, 60],  "lw": 13, "pattern": "ANSI31", "scale": 8},   # ipê / deck
-    "CONCRETO": {"color": [150, 150, 150], "lw": 18, "pattern": "ANSI31", "scale": 14},
+    # material/surface layers — native QCAD hatch patterns chosen to read as the
+    # real material (parquet for wood, square tiles for floors, brick-stone, etc.)
+    "PISO":     {"color": [170, 170, 170], "lw": 9,  "pattern": "NET",      "scale": 30},  # porcelanato (grade)
+    "MADEIRA":  {"color": [170, 110, 60],  "lw": 13, "pattern": "AR-PARQ1", "scale": 1.6}, # parquet / deck
+    "CONCRETO": {"color": [150, 150, 150], "lw": 18, "pattern": "ANSI31",   "scale": 14},
     "VIDRO":    {"color": [130, 200, 230], "lw": 13},
-    "AGUA":     {"color": [60, 140, 230],  "lw": 13, "pattern": "ANSI37", "scale": 20},  # piscina
-    "GRAMA":    {"color": [90, 170, 90],   "lw": 9,  "pattern": "GRASS",  "scale": 12},
-    "PEDRA":    {"color": [190, 185, 165], "lw": 13, "pattern": "GRAVEL", "scale": 10},
+    "AGUA":     {"color": [60, 140, 230],  "lw": 13, "pattern": "ANSI37",   "scale": 20},  # piscina
+    "GRAMA":    {"color": [90, 170, 90],   "lw": 9,  "pattern": "GRASS",    "scale": 12},
+    "PEDRA":    {"color": [185, 180, 160], "lw": 13, "pattern": "BRSTONE",  "scale": 14},  # pedra
 }
 # Friendly aliases an LLM is likely to reach for -> canonical material layer
 MATERIAL_ALIASES = {
