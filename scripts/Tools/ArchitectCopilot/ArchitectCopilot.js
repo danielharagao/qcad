@@ -425,11 +425,19 @@ ArchitectCopilot.init = function(basePath) {
     var imageBtn = new QPushButton(qsTr("Image"), row2);
     imageBtn.objectName = "ArchitectCopilotImage";
     imageBtn.toolTip = qsTr("Attach an image for the agent to see (or paste/drop one into the input).");
+    var mentionBtn = new QPushButton(qsTr("@ File"), row2);
+    mentionBtn.objectName = "ArchitectCopilotMention";
+    mentionBtn.toolTip = qsTr("Reference an open drawing (switches to it). Or type @ in the input.");
+    var historyBtn = new QPushButton(qsTr("History"), row2);
+    historyBtn.objectName = "ArchitectCopilotHistory2";
+    historyBtn.toolTip = qsTr("Browse and resume past conversations.");
     row2Layout.addWidget(apiKeyBtn, 0, 0);
     row2Layout.addWidget(oauthLoginBtn, 0, 0);
     row2Layout.addWidget(oauthBtn, 0, 0);
     row2Layout.addWidget(setupBtn, 0, 0);
     row2Layout.addWidget(imageBtn, 0, 0);
+    row2Layout.addWidget(mentionBtn, 0, 0);
+    row2Layout.addWidget(historyBtn, 0, 0);
     row2Layout.addStretch(1);
     row2.setLayout(row2Layout);
     layout.addWidget(row2, 0, 0);
@@ -455,6 +463,10 @@ ArchitectCopilot.init = function(basePath) {
     ArchitectCopilot.uiStatus = status;
     ArchitectCopilot.uiModeBtn = modeBtn;
 
+    // Start a fresh conversation session + @-mention completer for open drawings.
+    ArchitectCopilot.newSession();
+    ArchitectCopilot.refreshDocCompleter();
+
     // Enter sends (native QLineEdit signal — no key override, so typing/paste
     // keep working). Esc/Up/Down via QShortcut scoped to the input. All guarded
     // so a binding quirk can never break the text field.
@@ -479,14 +491,19 @@ ArchitectCopilot.init = function(basePath) {
     sendBtn.clicked.connect(function() { ArchitectCopilot.doSend(); });
     stopBtn.clicked.connect(function() { ArchitectCopilot.stop(); });
     imageBtn.clicked.connect(function() { ArchitectCopilot.pickImage(); });
+    mentionBtn.clicked.connect(function() { ArchitectCopilot.pickMention(); });
+    historyBtn.clicked.connect(function() { ArchitectCopilot.pickHistory(); });
 
     clearBtn.clicked.connect(function() {
+        // Save the current conversation, then start a fresh session (ChatGPT-style).
+        ArchitectCopilot.saveSession();
+        ArchitectCopilot.newSession();
         ArchitectCopilot.messages = [];
         ArchitectCopilot.oauthSessionId = null;
         ArchitectCopilot.pendingImage = null;
         RSettings.setValue("ArchitectCopilot/OAuthSessionId", "");
         history.clear();
-        ArchitectCopilot.append("system", "Conversation cleared.");
+        ArchitectCopilot.append("system", "New conversation.");
     });
 
     modeBtn.clicked.connect(function() {
@@ -642,11 +659,23 @@ ArchitectCopilot.doSend = function() {
     if ((!t || t.length === 0) && !ArchitectCopilot.pendingImage) return;
     if (ArchitectCopilot.busy) return;
     inp.text = "";
+    // @mention: if the message references an open drawing, switch to it so the
+    // agent operates on the right document.
+    var mentions = t.match(/@([^\s@]+\.(?:dxf|dwg))/gi);
+    if (mentions) {
+        for (var m = 0; m < mentions.length; m++) {
+            var nm = mentions[m].substr(1);
+            if (ArchitectCopilot.activateDoc(nm)) {
+                ArchitectCopilot.append("system", "→ switched to " + nm);
+            }
+        }
+    }
     if (t.length > 0) {
         ArchitectCopilot.history.push(t);
         if (ArchitectCopilot.history.length > 100) ArchitectCopilot.history.shift();
     }
     ArchitectCopilot.historyIdx = ArchitectCopilot.history.length;
+    ArchitectCopilot.refreshDocCompleter();
     ArchitectCopilot.sendUserMessage(t);
 };
 
@@ -2003,6 +2032,171 @@ ArchitectCopilot.append = function(role, text) {
     else if (role === "tool") label = "tool";
     else label = "system";
     h.append("[" + ts + "] " + label + ": " + text);
+    ArchitectCopilot.recordLine(role, text);
+};
+
+// ---------------------------------------------------------------------------
+// Session history (ChatGPT-style): conversations persist to ~/.qcad-agent/
+// sessions/*.json and can be browsed/resumed via the History button.
+ArchitectCopilot.session = null;   // { file, title, started, lines, oauth }
+
+ArchitectCopilot.sessionsDir = function() {
+    var d = QDir.homePath() + "/.qcad-agent/sessions";
+    if (!new QDir(d).exists()) QDir.root().mkpath(d);
+    return d;
+};
+
+ArchitectCopilot.newSession = function() {
+    var now = new Date();
+    var stamp = ("" + now.getTime());
+    ArchitectCopilot.session = {
+        file: ArchitectCopilot.sessionsDir() + "/" + stamp + ".json",
+        title: "", started: now.toLocaleString(), lines: [], oauth: ""
+    };
+};
+
+ArchitectCopilot.recordLine = function(role, text) {
+    if (isNull(ArchitectCopilot.session)) ArchitectCopilot.newSession();
+    var s = ArchitectCopilot.session;
+    s.lines.push({ role: role, text: text });
+    if (s.title.length === 0 && role === "user") {
+        s.title = text.length > 48 ? text.substr(0, 48) + "…" : text;
+    }
+    s.oauth = ArchitectCopilot.oauthSessionId || s.oauth || "";
+    ArchitectCopilot.saveSession();
+};
+
+ArchitectCopilot.saveSession = function() {
+    var s = ArchitectCopilot.session;
+    if (isNull(s) || s.lines.length === 0) return;
+    try {
+        var f = new QFile(s.file);
+        var flags = new QIODevice.OpenMode(QIODevice.WriteOnly | QIODevice.Truncate | QIODevice.Text);
+        if (f.open(flags)) {
+            new QTextStream(f).writeString(JSON.stringify({
+                title: s.title, started: s.started, oauth: s.oauth, lines: s.lines }));
+            f.close();
+        }
+    } catch (e) { ArchitectCopilot.fileLog("saveSession: " + e); }
+};
+
+ArchitectCopilot.listSessions = function() {
+    var out = [];
+    try {
+        var dir = new QDir(ArchitectCopilot.sessionsDir());
+        var files = dir.entryList(["*.json"], QDir.Files, QDir.Time);  // newest first
+        for (var i = 0; i < files.length; i++) {
+            var path = ArchitectCopilot.sessionsDir() + "/" + files[i];
+            var txt = ArchitectCopilot.readFileText(path);
+            if (txt === null) continue;
+            try {
+                var d = JSON.parse(txt);
+                out.push({ path: path, title: d.title || "(untitled)", started: d.started || "" });
+            } catch (e) {}
+        }
+    } catch (e) { ArchitectCopilot.fileLog("listSessions: " + e); }
+    return out;
+};
+
+ArchitectCopilot.pickHistory = function() {
+    var sessions = ArchitectCopilot.listSessions();
+    if (sessions.length === 0) {
+        ArchitectCopilot.append("system", "No past conversations yet.");
+        return;
+    }
+    var labels = [];
+    for (var i = 0; i < sessions.length; i++) {
+        labels.push(sessions[i].started + " — " + sessions[i].title);
+    }
+    var choice = QInputDialog.getItem(EAction.getMainWindow(),
+        qsTr("Conversation history"), qsTr("Resume a past conversation:"),
+        labels, 0, false);
+    if (isNull(choice) || choice.length === 0) return;
+    var idx = labels.indexOf(choice);
+    if (idx < 0) return;
+    ArchitectCopilot.loadSession(sessions[idx].path);
+};
+
+ArchitectCopilot.loadSession = function(path) {
+    var txt = ArchitectCopilot.readFileText(path);
+    if (txt === null) { ArchitectCopilot.append("system", "Could not read session."); return; }
+    var d;
+    try { d = JSON.parse(txt); } catch (e) { return; }
+    // start the loaded session as the current one (so new turns append to it)
+    ArchitectCopilot.uiHistory.clear();
+    ArchitectCopilot.messages = [];
+    ArchitectCopilot.session = {
+        file: path, title: d.title || "", started: d.started || "",
+        lines: d.lines || [], oauth: d.oauth || ""
+    };
+    ArchitectCopilot.oauthSessionId = d.oauth || null;
+    if (d.oauth) RSettings.setValue("ArchitectCopilot/OAuthSessionId", d.oauth);
+    var h = ArchitectCopilot.uiHistory;
+    var lines = d.lines || [];
+    for (var i = 0; i < lines.length; i++) {
+        var lab = lines[i].role === "user" ? "You"
+            : lines[i].role === "copilot" ? "Copilot"
+            : lines[i].role === "tool" ? "tool" : "system";
+        h.append(lab + ": " + lines[i].text);
+    }
+    h.append("——— resumed ———");
+};
+
+// ---------------------------------------------------------------------------
+// @-mention of open drawings: list/activate QCAD documents by file name.
+ArchitectCopilot.listOpenDocs = function() {
+    var docs = [];
+    try {
+        var appWin = EAction.getMainWindow();
+        var mdiArea = appWin.getMdiArea();
+        var children = mdiArea.subWindowList();
+        for (var i = 0; i < children.length; i++) {
+            var doc = children[i].getDocument();
+            if (isNull(doc)) continue;
+            var fn = doc.getFileName();
+            var name = (fn && fn.length > 0) ? new QFileInfo(fn).fileName() : "Untitled";
+            docs.push({ name: name, win: children[i] });
+        }
+    } catch (e) { ArchitectCopilot.fileLog("listOpenDocs: " + e); }
+    return docs;
+};
+
+ArchitectCopilot.activateDoc = function(name) {
+    var docs = ArchitectCopilot.listOpenDocs();
+    for (var i = 0; i < docs.length; i++) {
+        if (docs[i].name === name) {
+            try { EAction.getMainWindow().getMdiArea().setActiveSubWindow(docs[i].win); return true; }
+            catch (e) {}
+        }
+    }
+    return false;
+};
+
+ArchitectCopilot.refreshDocCompleter = function() {
+    try {
+        var inp = ArchitectCopilot.uiInputWidget;
+        if (isNull(inp) || typeof(inp.setCompleter) !== "function") return;
+        var docs = ArchitectCopilot.listOpenDocs();
+        var list = [];
+        for (var i = 0; i < docs.length; i++) list.push("@" + docs[i].name);
+        var comp = new QCompleter(list, inp);
+        comp.caseSensitivity = Qt.CaseInsensitive;
+        inp.setCompleter(comp);
+    } catch (e) { ArchitectCopilot.fileLog("refreshDocCompleter: " + e); }
+};
+
+ArchitectCopilot.pickMention = function() {
+    var docs = ArchitectCopilot.listOpenDocs();
+    if (docs.length === 0) { ArchitectCopilot.append("system", "No open drawings."); return; }
+    var names = [];
+    for (var i = 0; i < docs.length; i++) names.push(docs[i].name);
+    var choice = QInputDialog.getItem(EAction.getMainWindow(),
+        qsTr("Reference a drawing"), qsTr("Insert @mention and switch to:"),
+        names, 0, false);
+    if (isNull(choice) || choice.length === 0) return;
+    ArchitectCopilot.activateDoc(choice);
+    var inp = ArchitectCopilot.uiInputWidget;
+    if (!isNull(inp)) inp.text = "@" + choice + " " + ("" + inp.text);
 };
 
 ArchitectCopilot.setBusy = function(busy, statusText) {
