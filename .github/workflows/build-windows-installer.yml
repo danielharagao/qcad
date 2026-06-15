@@ -1,0 +1,57 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build QCAD Architect Copilot Windows installer
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt 5.15.2 (with QtScript)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 5.15.2
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          modules: qtscript
+          cache: true
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build QCAD + stage deploy folder
+        shell: pwsh
+        run: ./agent/qcad-tools/windows/build_windows.ps1
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+          & $iscc agent\qcad-tools\windows\installer.iss
+
+      - name: Compute checksum
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem dist\qcad-architect-copilot-windows-*-setup.exe | Select-Object -First 1
+          (Get-FileHash $f.FullName -Algorithm SHA256).Hash + "  " + $f.Name |
+            Out-File -Encoding ascii dist\SHA256SUMS-windows.txt
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qcad-architect-copilot-windows
+          path: |
+            dist/qcad-architect-copilot-windows-*-setup.exe
+            dist/SHA256SUMS-windows.txt
+          if-no-files-found: error
