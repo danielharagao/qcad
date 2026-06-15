@@ -118,14 +118,21 @@ def qcad_draw(code: str, mode: str = "add") -> str:
       plan.perimeter(W,H,t,openings)            # rectangular shell, clean corners
       plan.walls_polyline(points, t, closed)    # L / U / courtyard shells (orthogonal)
 
-    LAYERS: plan.layer("ROOF", (r,g,b)) defines/recolors a layer; pass layer="ROOF"
-    to any draw method to put entities on it (toggleable + colored in QCAD). Entities
-    land on their real named layer now (not all on one).
-
-    COLOR & FILL/TEXTURE: every draw method takes color=(r,g,b) or "#rrggbb".
-      plan.fill(points, color=(r,g,b), pattern="SOLID")   # solid fill
-      plan.fill_rect((x0,y0),(x1,y1), color, pattern)     # patterns: ANSI31 (diagonal),
-        ANSI37 (crosshatch), BRICK, EARTH, GRASS, NET = texture.
+    MATERIALS THE CAD-CORRECT WAY — organize by ELEMENT/MATERIAL on layers; draw
+    entities ByLayer (they inherit the layer's colour + lineweight); show materials
+    with hatch PATTERNS, not per-entity solid colours.
+      • Standard layers exist: WALLS, DOORS, WINDOWS, FIX, TEXT, DIMS (elements) and
+        PISO, MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA (materials, each with a
+        colour + lineweight + hatch pattern). Pass layer="MADEIRA" etc.
+      • plan.surface(points, "wood"|"tile"|"water"|"grass"|"concrete"|"stone") fills
+        an area with that MATERIAL'S texture (hatch) on its layer, ByLayer colour —
+        e.g. plan.surface(deck_pts, "wood"); plan.surface(pool_pts, "water").
+      • plan.layer(name, color=(r,g,b), lineweight=50, pattern="ANSI31") to define a
+        new material/element layer (lineweight in 1/100 mm; 50 = 0.5 mm).
+      • Prefer this over per-entity colour. Only pass color=(r,g,b) to a draw method
+        for a one-off override; normally let it be ByLayer.
+      • Low-level fills still exist: plan.fill/fill_rect(points, pattern=...) with
+        ANSI31 (diagonal), ANSI37 (crosshatch), BRICK, EARTH, GRASS, NET.
 
     Use REALISTIC cm dimensions and respect ergonomics/clearances (door swing >=90,
     walk-through >=70, bed side >=60, kitchen triangle, bathroom clearances). Every

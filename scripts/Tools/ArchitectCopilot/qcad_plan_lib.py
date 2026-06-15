@@ -26,14 +26,38 @@ swing arc is drawn automatically.
 """
 import math
 
-# Layer name -> ACI colour number / colour name (used by both DXF and live inject)
-LAYER_COLORS = {
-    "WALLS": ("white", 7),
-    "DOORS": ("green", 3),
-    "WINDOWS": ("blue", 5),
-    "TEXT": ("yellow", 2),
-    "DIMS": ("red", 1),
-    "FIX": ("magenta", 6),
+# CAD-correct layer system: layers are organized by ELEMENT / MATERIAL and carry
+# colour + lineweight (1/100 mm) + an optional hatch PATTERN. Entities are drawn
+# ByLayer (they inherit these) — you change a material by editing its layer, not
+# entity-by-entity. Materials are conveyed by hatch PATTERN, not just by colour.
+# Each def: name -> {color:[r,g,b], lw:<1/100mm>, pattern:<hatch or None>, scale}
+LAYER_DEFS = {
+    # element / annotation layers (line-work)
+    "WALLS":   {"color": [255, 255, 255], "lw": 50},   # wall poché, thick
+    "DOORS":   {"color": [0, 200, 0],     "lw": 25},
+    "WINDOWS": {"color": [60, 140, 255],  "lw": 25},   # esquadrias
+    "FIX":     {"color": [230, 0, 230],   "lw": 13},   # mobiliário
+    "TEXT":    {"color": [255, 220, 0],   "lw": 0},
+    "DIMS":    {"color": [255, 60, 60],   "lw": 9},
+    "FILL":    {"color": [180, 180, 180], "lw": 0},
+    # material/surface layers (hatch patterns = texture)
+    "PISO":     {"color": [170, 170, 170], "lw": 9,  "pattern": "NET",    "scale": 30},  # porcelanato
+    "MADEIRA":  {"color": [170, 110, 60],  "lw": 13, "pattern": "ANSI31", "scale": 8},   # ipê / deck
+    "CONCRETO": {"color": [150, 150, 150], "lw": 18, "pattern": "ANSI31", "scale": 14},
+    "VIDRO":    {"color": [130, 200, 230], "lw": 13},
+    "AGUA":     {"color": [60, 140, 230],  "lw": 13, "pattern": "ANSI37", "scale": 20},  # piscina
+    "GRAMA":    {"color": [90, 170, 90],   "lw": 9,  "pattern": "GRASS",  "scale": 12},
+    "PEDRA":    {"color": [190, 185, 165], "lw": 13, "pattern": "GRAVEL", "scale": 10},
+}
+# Friendly aliases an LLM is likely to reach for -> canonical material layer
+MATERIAL_ALIASES = {
+    "TILE": "PISO", "FLOOR": "PISO", "PORCELANATO": "PISO", "PISO": "PISO",
+    "WOOD": "MADEIRA", "DECK": "MADEIRA", "IPE": "MADEIRA", "MADEIRA": "MADEIRA",
+    "CONCRETE": "CONCRETO", "CONCRETO": "CONCRETO",
+    "GLASS": "VIDRO", "VIDRO": "VIDRO",
+    "WATER": "AGUA", "POOL": "AGUA", "AGUA": "AGUA", "PISCINA": "AGUA",
+    "GRASS": "GRAMA", "GARDEN": "GRAMA", "GRAMA": "GRAMA",
+    "STONE": "PEDRA", "GRAVEL": "PEDRA", "PEDRA": "PEDRA",
 }
 
 
@@ -47,26 +71,51 @@ class Plan:
         self._walls_done = False
         self._tick = 16
         self._dtxt = 30
-        # Layer registry: name -> [r,g,b]. Seeded with the built-in palette;
-        # plan.layer() adds/overrides; any layer used by a primitive auto-registers.
+        # Layer registry seeded with the standard element + material layers.
         self._layers = {}
-        for name, (cname, aci) in LAYER_COLORS.items():
-            self._layers[name] = list({
-                "WALLS": (255, 255, 255), "DOORS": (0, 200, 0),
-                "WINDOWS": (60, 120, 255), "TEXT": (255, 220, 0),
-                "DIMS": (255, 60, 60), "FIX": (230, 0, 230),
-            }.get(name, (255, 255, 255)))
+        for name, d in LAYER_DEFS.items():
+            self._layers[name] = {
+                "color": list(d["color"]), "lw": d.get("lw", 13),
+                "pattern": d.get("pattern"), "scale": d.get("scale", 1)}
 
-    def layer(self, name, color):
-        """Define (or recolor) a named layer. color = (r,g,b) or '#rrggbb'.
-        Then pass layer="<name>" to any draw method to put entities on it."""
+    def layer(self, name, color=None, lineweight=None, pattern=None, scale=None):
+        """Define/edit a layer (the CAD-correct unit of material/element). Entities
+        on it inherit its color+lineweight (ByLayer). color=(r,g,b)/'#rrggbb',
+        lineweight in 1/100 mm (e.g. 50=0.5mm), pattern=hatch name for surfaces."""
+        d = self._layers.get(name, {"color": [180, 180, 180], "lw": 13,
+                                     "pattern": None, "scale": 1})
         c = self._col(color)
         if c is not None:
-            self._layers[name] = c
+            d["color"] = c
+        if lineweight is not None:
+            d["lw"] = lineweight
+        if pattern is not None:
+            d["pattern"] = pattern
+        if scale is not None:
+            d["scale"] = scale
+        self._layers[name] = d
+
+    def _mat(self, material):
+        """Resolve a friendly material name to a canonical material layer."""
+        key = str(material).upper()
+        return MATERIAL_ALIASES.get(key, key)
+
+    def surface(self, points, material, layer=None):
+        """Fill a closed area with a MATERIAL — drawn as that material's hatch
+        pattern (texture) on its material layer, ByLayer colour. e.g.
+        plan.surface(room_pts, "wood") / plan.surface(pool_pts, "water")."""
+        lname = layer or self._mat(material)
+        d = self._layers.get(lname, {})
+        pat = d.get("pattern")
+        prim = {"t": "hatch", "pts": [list(p) for p in points],
+                "pattern": pat or "SOLID", "solid": (pat is None),
+                "angle": 0, "scale": d.get("scale", 1), "layer": lname}
+        self._add(prim)
 
     def _register_layer(self, name):
         if name and name not in self._layers:
-            self._layers[name] = [180, 180, 180]   # default gray for new layers
+            self._layers[name] = {"color": [180, 180, 180], "lw": 13,
+                                  "pattern": None, "scale": 1}
 
     # -- primitive recording --------------------------------------------
     def _add(self, prim):
@@ -365,11 +414,14 @@ class Plan:
         prims = self.primitives()
         doc = ezdxf.new("R2010", setup=True)
         msp = doc.modelspace()
-        # Create every registered layer with its RGB colour (thawed, visible).
-        for name, rgb in self._layers.items():
+        # Create every registered layer with its colour + lineweight (thawed).
+        # Entities are ByLayer, so this is what defines each material's look.
+        for name, d in self._layers.items():
+            rgb = d.get("color", [255, 255, 255])
             lyr = doc.layers.get(name) if name in doc.layers else doc.layers.add(name)
             try:
                 lyr.rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+                lyr.dxf.lineweight = int(d.get("lw", 13))   # 1/100 mm
                 lyr.on()
                 lyr.thaw()
             except Exception:
@@ -378,6 +430,8 @@ class Plan:
         valign_map = {"bottom": "BOTTOM", "middle": "MIDDLE", "top": "TOP"}
 
         def attribs(p):
+            # ByLayer by default (no explicit colour) — only override when the
+            # primitive carries its own colour.
             a = {"layer": p.get("layer", "WALLS")}
             c = p.get("color")
             if c:

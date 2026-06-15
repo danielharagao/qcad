@@ -127,13 +127,20 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "      plan.dim_h(x1, x2, y_meas, dy)            dy OUTSIDE the building (e.g. -180)\n"
     + "      plan.dim_v(y1, y2, x_meas, dx)            dx OUTSIDE the building\n"
     + "      plan.line/rect/circle/arc/polyline, plan.fixture_toilet/sink/stove/bed\n"
-    + "  • COLOR & FILL/TEXTURE: every draw method takes an optional color=(r,g,b)\n"
-    + "    (0-255) or \"#rrggbb\", e.g. plan.rect((0,0),(100,100), color=(200,180,120)).\n"
-    + "    Fill a region: plan.fill(points, color=(r,g,b), pattern=\"SOLID\") for a solid\n"
-    + "    fill, or a pattern for texture: \"ANSI31\" (diagonal), \"ANSI37\" (crosshatch),\n"
-    + "    \"BRICK\", \"EARTH\", \"GRASS\", \"NET\". plan.fill_rect((x0,y0),(x1,y1), color, pattern).\n"
-    + "    Use light solid fills to tint rooms by function, patterns to suggest material\n"
-    + "    (brick walls, grass outside, tile floors). Keep walls/dims/labels readable on top.\n"
+    + "  • MATERIALS & COLOR — the CAD-correct way (IMPORTANT): organize by ELEMENT/\n"
+    + "    MATERIAL on layers and draw ByLayer (entities inherit the layer's colour +\n"
+    + "    lineweight). Do NOT colour each entity or organize 'by colour' — that's wrong.\n"
+    + "    Show materials with hatch PATTERNS (texture), not solid colour fills.\n"
+    + "    - Standard layers: WALLS/DOORS/WINDOWS/FIX/TEXT/DIMS (elements) and PISO,\n"
+    + "      MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA (materials, each pre-set with\n"
+    + "      a colour + lineweight + hatch). Put geometry on the right layer (layer=…).\n"
+    + "    - plan.surface(points, \"wood\"|\"tile\"|\"water\"|\"grass\"|\"concrete\"|\"stone\")\n"
+    + "      fills an area with that MATERIAL'S texture on its layer, ByLayer — e.g.\n"
+    + "      plan.surface(deck_pts, \"wood\"); plan.surface(pool_pts, \"water\").\n"
+    + "    - plan.layer(name, color=(r,g,b), lineweight=50, pattern=\"ANSI31\") defines a\n"
+    + "      new material/element layer (lineweight 1/100 mm; walls 50, fine lines 9).\n"
+    + "    - Pass color=(r,g,b) to a draw call ONLY for a rare one-off override; default\n"
+    + "      is ByLayer. Low-level plan.fill/fill_rect(points, pattern=…) still exist.\n"
     + "  • EXTERIOR WALLS — use plan.perimeter() for guaranteed clean corners:\n"
     + "        plan.perimeter(W, H, plan.T_EXT, {\n"
     + "            \"bottom\": [(250, 90)],   # (center_x, width) door/window openings\n"
@@ -1625,6 +1632,8 @@ ArchitectCopilot.addHatch = function(p) {
         if (lid !== undefined && lid !== null) ent.setLayerId(lid);
         if (p.color && p.color.length === 3) {
             ent.setColor(new RColor(p.color[0], p.color[1], p.color[2]));
+        } else {
+            ent.setColor(new RColor(RColor.ByLayer));   // material colour = the layer's
         }
         addObject(ent);
         return true;
@@ -1656,14 +1665,35 @@ ArchitectCopilot.thawAllLayers = function(di) {
 
 // Create/recolor the layers a drawing uses (from the primitives JSON layers
 // map), thawed and visible, so entities land on the right (toggleable) layer.
+// Map a 1/100mm lineweight number to the RLineweight enum value.
+ArchitectCopilot.lwEnum = function(lw) {
+    var m = { 0: RLineweight.Weight000, 9: RLineweight.Weight009,
+        13: RLineweight.Weight013, 18: RLineweight.Weight018,
+        25: RLineweight.Weight025, 35: RLineweight.Weight035,
+        50: RLineweight.Weight050 };
+    if (typeof(m[lw]) !== "undefined") return m[lw];
+    return RLineweight.Weight013;
+};
+
+// Read a layer def (new {color,lw,...} format, or legacy [r,g,b]) -> {col, lw}.
+ArchitectCopilot.layerDef = function(layersMap, name) {
+    var d = layersMap ? layersMap[name] : null;
+    if (d && d.length === 3) return { col: new RColor(d[0], d[1], d[2]), lw: 13 };   // legacy
+    if (d && d.color && d.color.length === 3) {
+        return { col: new RColor(d.color[0], d.color[1], d.color[2]),
+                 lw: (typeof(d.lw) === "number") ? d.lw : 13 };
+    }
+    return null;
+};
+
 ArchitectCopilot.ensureLayers = function(di, layersMap) {
     if (isNull(layersMap)) return;
     var doc = di.getDocument();
     for (var name in layersMap) {
         if (!layersMap.hasOwnProperty(name) || name === "0") continue;
-        var rgb = layersMap[name];
-        var col = (rgb && rgb.length === 3)
-            ? new RColor(rgb[0], rgb[1], rgb[2]) : new RColor(255, 255, 255);
+        var def = ArchitectCopilot.layerDef(layersMap, name);
+        var col = def ? def.col : new RColor(255, 255, 255);
+        var lw = ArchitectCopilot.lwEnum(def ? def.lw : 13);
         try {
             if (doc.hasLayer(name)) {
                 var ex = doc.queryLayer(name);
@@ -1671,13 +1701,14 @@ ArchitectCopilot.ensureLayers = function(di, layersMap) {
                     ex.setFrozen(false);
                     if (typeof(ex.setOff) === "function") ex.setOff(false);
                     ex.setColor(col);
+                    if (typeof(ex.setLineweight) === "function") ex.setLineweight(lw);
                     var mop = new RModifyObjectsOperation();
                     mop.addObject(ex);
                     di.applyOperation(mop);
                 }
             } else {
                 var layer = new RLayer(doc, name, false, false, col,
-                    doc.getLinetypeId("CONTINUOUS"), RLineweight.Weight000, false);
+                    doc.getLinetypeId("CONTINUOUS"), lw, false);
                 di.applyOperation(new RAddObjectOperation(layer, false));
             }
         } catch (e) { ArchitectCopilot.fileLog("ensureLayer " + name + ": " + e); }
@@ -1685,10 +1716,8 @@ ArchitectCopilot.ensureLayers = function(di, layersMap) {
 };
 
 ArchitectCopilot.layerColorFrom = function(layersMap, name) {
-    if (layersMap && layersMap[name] && layersMap[name].length === 3) {
-        var c = layersMap[name];
-        return new RColor(c[0], c[1], c[2]);
-    }
+    var def = ArchitectCopilot.layerDef(layersMap, name);
+    if (def) return def.col;
     return ArchitectCopilot.layerColor(name);
 };
 
@@ -1804,16 +1833,22 @@ ArchitectCopilot.addEntitiesFromFile = function(path, replace) {
         var doc = di.getDocument();
         var vmap = { bottom: RS.VAlignBottom, middle: RS.VAlignMiddle, top: RS.VAlignTop };
         var hmap = { left: RS.HAlignLeft, center: RS.HAlignCenter, right: RS.HAlignRight };
-        // Add an entity with an EXPLICIT layer + colour (so each lands on its own
-        // layer — relying on the "current layer" fails in a batched transaction).
+        // Put each entity on its named layer and leave it ByLayer (inherits the
+        // layer's colour + lineweight) — the CAD-correct way. Only override when
+        // the primitive carries an explicit colour.
+        var byLayer = new RColor(RColor.ByLayer);
         var place = function(ent, p) {
             if (isNull(ent)) return false;
             var lid = doc.getLayerId(p.layer || "0");
             if (lid !== undefined && lid !== null) ent.setLayerId(lid);
-            var col = (p.color && p.color.length === 3)
-                ? new RColor(p.color[0], p.color[1], p.color[2])
-                : ArchitectCopilot.layerColorFrom(layersMap, p.layer);
-            ent.setColor(col);
+            if (p.color && p.color.length === 3) {
+                ent.setColor(new RColor(p.color[0], p.color[1], p.color[2]));
+            } else {
+                ent.setColor(byLayer);
+                if (typeof(ent.setLineweight) === "function") {
+                    ent.setLineweight(RLineweight.WeightByLayer);
+                }
+            }
             addObject(ent);
             return true;
         };
