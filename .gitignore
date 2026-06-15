@@ -86,3 +86,10 @@ CMakeCache.txt.prev
 
 adinit.dat
 build
+
+# Architect Copilot build artifacts
+dist/
+aqtinstall.log
+__pycache__/
+*.pyc
+.qt-venv/

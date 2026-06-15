@@ -17,7 +17,6 @@ SOURCES = \
     RSnapOnEntity.cpp \
     RSnapPerpendicular.cpp \
     RSnapReference.cpp \
-    RSnapSelection.cpp \
     RSnapTangential.cpp
 HEADERS = \
     RRestrictAngleLength.h \
@@ -37,7 +36,6 @@ HEADERS = \
     RSnapOnEntity.h \
     RSnapPerpendicular.h \
     RSnapReference.h  \
-    RSnapSelection.h \
     RSnapTangential.h
 TEMPLATE = lib
 r_static_libs {
