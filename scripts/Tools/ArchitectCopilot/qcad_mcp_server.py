@@ -187,6 +187,48 @@ def qcad_draw(code: str, mode: str = "add") -> str:
 
 
 @mcp.tool()
+def qcad_patterns(filter: str = "") -> str:
+    """List QCAD's built-in hatch PATTERNS (textures) you can use for materials —
+    pass any of these names to plan.layer(..., pattern=NAME) or plan.surface(...,
+    pattern=NAME). Optional `filter` substring narrows the list (e.g. "wood",
+    "brick", "ar"). Useful examples: AR-PARQ1/JIS_WOOD (wood), NET/SQUARE/HEXAGONS
+    (tiles), BRSTONE/GRAVEL (stone), BRICK, GRASS, EARTH, ANSI31/37 (hatching)."""
+    import glob
+    pats = set()
+    for base in (os.path.join(_HERE, "..", "..", "..", "patterns", "metric"),
+                 os.path.join(_HERE, "..", "..", "..", "patterns", "imperial")):
+        for f in glob.glob(os.path.join(base, "*.pat")):
+            try:
+                with open(f, "r", errors="ignore") as fh:
+                    for line in fh:
+                        if line.startswith("*"):
+                            pats.add(line[1:].split(",")[0].strip().upper())
+                            break
+            except Exception:
+                pass
+    names = sorted(pats)
+    if filter:
+        names = [n for n in names if filter.upper() in n]
+    if not names:
+        return "no patterns found" + (f" matching '{filter}'" if filter else "")
+    return f"{len(names)} patterns: " + ", ".join(names)
+
+
+@mcp.tool()
+def qcad_export(fmt: str = "pdf", path: str = "") -> str:
+    """Export the open drawing to a file. fmt = pdf | png | svg | dxf | dwg.
+    path defaults to ~/Desktop/qcad-export.<fmt>. Use to deliver the final plan."""
+    fmt = (fmt or "pdf").lower().lstrip(".")
+    if not path:
+        path = os.path.join(os.path.expanduser("~"), "Desktop", "qcad-export." + fmt)
+    try:
+        resp = _send({"export": {"fmt": fmt, "path": path}})
+    except (ConnectionRefusedError, socket.timeout) as e:
+        return f"error: QCAD not reachable on {HOST}:{PORT} ({e})"
+    return resp.get("result", "error: no result")
+
+
+@mcp.tool()
 def qcad_query(what: str = "layers") -> str:
     """Read back the LIVE QCAD document so you can self-verify without guessing.
 

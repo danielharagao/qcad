@@ -126,7 +126,10 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "      plan.label(text, (x,y), h=34)\n"
     + "      plan.dim_h(x1, x2, y_meas, dy)            dy OUTSIDE the building (e.g. -180)\n"
     + "      plan.dim_v(y1, y2, x_meas, dx)            dx OUTSIDE the building\n"
-    + "      plan.line/rect/circle/arc/polyline, plan.fixture_toilet/sink/stove/bed\n"
+    + "      plan.line/rect/circle/arc/ellipse/polyline\n"
+    + "      FIXTURES (parametric, on FIX): plan.fixture_toilet/sink/stove/fridge/\n"
+    + "        bed/sofa/table(seats=)/wardrobe/shower/bathtub/stairs/car/plant — use\n"
+    + "        these instead of bare rectangles to furnish rooms realistically.\n"
     + "  • MATERIALS & COLOR — the CAD-correct way (IMPORTANT): organize by ELEMENT/\n"
     + "    MATERIAL on layers and draw ByLayer (entities inherit the layer's colour +\n"
     + "    lineweight). Do NOT colour each entity or organize 'by colour' — that's wrong.\n"
@@ -224,7 +227,13 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "    that entities landed on the right layers, instead of guessing.\n"
     + "  • qcad_erase(layer=… or ids=…): delete by layer or entity ids — edit\n"
     + "    incrementally (e.g. erase the FURNITURE layer) instead of redrawing all.\n"
-    + "  • qcad_undo(steps): roll back the last operations.\n\n"
+    + "  • qcad_undo(steps): roll back the last operations.\n"
+    + "  • qcad_patterns(filter): list QCAD's 127 built-in hatch patterns (textures).\n"
+    + "    Pass any to plan.surface(pts, mat, pattern=NAME) or plan.layer(name,\n"
+    + "    pattern=NAME). e.g. AR-PARQ1/JIS_WOOD (wood), NET/SQUARE/HEXAGONS (tile),\n"
+    + "    BRSTONE/GRAVEL (stone), BRICK, GRASS. Search with a filter like \"wood\".\n"
+    + "  • qcad_export(fmt, path): export the drawing — pdf | png | svg | dxf | dwg.\n"
+    + "    Use to deliver the final plan to the user.\n\n"
 
     + "SEEING YOUR WORK:\n"
     + "  • You have a second tool, `qcad_view`, that renders the current drawing to an\n"
@@ -598,6 +607,11 @@ ArchitectCopilot.startTcpServer = function(parent) {
                     } else if (typeof(req.undo) !== "undefined") {
                         result = ArchitectCopilot.doUndo(req.undo | 0);
                         ArchitectCopilot.fileLog("tcp undo -> " + result);
+                        sock.write(new QByteArray(JSON.stringify({result: result}) + "\n"));
+                        sock.flush();
+                    } else if (typeof(req["export"]) !== "undefined") {
+                        result = ArchitectCopilot.doExport(req["export"]);
+                        ArchitectCopilot.fileLog("tcp export -> " + result);
                         sock.write(new QByteArray(JSON.stringify({result: result}) + "\n"));
                         sock.flush();
                     } else if (typeof(req.capture) !== "undefined") {
@@ -1341,7 +1355,8 @@ ArchitectCopilot.callClaudeCode = function(userText, imagePath) {
     }
 
     var allowed = "mcp__qcad__qcad_command,mcp__qcad__qcad_view,mcp__qcad__qcad_draw,"
-        + "mcp__qcad__qcad_query,mcp__qcad__qcad_erase,mcp__qcad__qcad_undo";
+        + "mcp__qcad__qcad_query,mcp__qcad__qcad_erase,mcp__qcad__qcad_undo,"
+        + "mcp__qcad__qcad_patterns,mcp__qcad__qcad_export";
     var prompt = userText;
     if (imagePath) {
         // claude -p can't take inline image bytes; point it at the file and let
@@ -1787,6 +1802,31 @@ ArchitectCopilot.doErase = function(spec) {
         di.applyOperation(op);
         ArchitectCopilot.runQcadCommand("zoomauto");
         return "ok: erased " + ids.length + " entities";
+    } catch (e) { return "error: " + e; }
+};
+
+// Export the open drawing to PNG (raster) or DXF/DWG/SVG/PDF (vector/cad).
+ArchitectCopilot.doExport = function(spec) {
+    var di = EAction.getDocumentInterface();
+    if (isNull(di)) return "error: no document";
+    var fmt = ("" + (spec.fmt || "pdf")).toLowerCase();
+    var path = spec.path;
+    if (!path) return "error: no path";
+    try {
+        if (fmt === "png" || fmt === "jpg" || fmt === "jpeg" || fmt === "bmp") {
+            var r = ArchitectCopilot.captureView(path);
+            return (("" + r).indexOf("error") === 0) ? r : ("ok: exported " + path);
+        }
+        var names = { dxf: "R27 (2013) DXF", dwg: "R27 (2013) DWG",
+                      svg: "Scalable Vector Graphics (SVG)", pdf: "PDF" };
+        var tries = [names[fmt], fmt.toUpperCase(), ""];
+        for (var i = 0; i < tries.length; i++) {
+            try {
+                di.exportFile(path, tries[i]);
+                if (new QFileInfo(path).exists()) return "ok: exported " + path;
+            } catch (e) { /* try next format name */ }
+        }
+        return "error: export to " + fmt + " not supported by this QCAD build";
     } catch (e) { return "error: " + e; }
 };
 

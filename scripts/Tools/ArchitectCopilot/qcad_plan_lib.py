@@ -101,16 +101,19 @@ class Plan:
         key = str(material).upper()
         return MATERIAL_ALIASES.get(key, key)
 
-    def surface(self, points, material, layer=None):
+    def surface(self, points, material, layer=None, pattern=None, scale=None):
         """Fill a closed area with a MATERIAL — drawn as that material's hatch
         pattern (texture) on its material layer, ByLayer colour. e.g.
-        plan.surface(room_pts, "wood") / plan.surface(pool_pts, "water")."""
+        plan.surface(room_pts, "wood") / plan.surface(pool_pts, "water").
+        Override the texture with any of QCAD's 127 patterns via pattern=
+        (e.g. pattern="HEXAGONS"); list them with the qcad_patterns tool."""
         lname = layer or self._mat(material)
         d = self._layers.get(lname, {})
-        pat = d.get("pattern")
+        pat = pattern or d.get("pattern")
         prim = {"t": "hatch", "pts": [list(p) for p in points],
                 "pattern": pat or "SOLID", "solid": (pat is None),
-                "angle": 0, "scale": d.get("scale", 1), "layer": lname}
+                "angle": 0, "scale": (scale if scale is not None else d.get("scale", 1)),
+                "layer": lname}
         self._add(prim)
 
     def _register_layer(self, name):
@@ -395,6 +398,73 @@ class Plan:
         self.rect((x, y), (x + w, y + d), layer)
         self.rect((x + w * 0.08, y + d * 0.72), (x + w * 0.46, y + d * 0.95), layer)
         self.rect((x + w * 0.54, y + d * 0.72), (x + w * 0.92, y + d * 0.95), layer)
+
+    def fixture_sofa(self, pos, w=210, d=90, layer="FIX"):
+        """3-seat sofa, seat side facing +y (up). pos = bottom-left corner."""
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)                 # outline
+        self.rect((x, y + d * 0.78), (x + w, y + d), layer)      # backrest (at top)
+        self.rect((x, y), (x + d * 0.16, y + d), layer)          # left arm
+        self.rect((x + w - d * 0.16, y), (x + w, y + d), layer)  # right arm
+        for k in (1, 2):
+            self.line((x + w * k / 3.0, y), (x + w * k / 3.0, y + d * 0.78), layer)
+
+    def fixture_table(self, pos, w=160, d=90, seats=6, layer="FIX"):
+        """Dining table with chairs around the long sides. pos=bottom-left."""
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        per = max(1, seats // 2)
+        cw = 45
+        for i in range(per):
+            cx = x + (i + 0.5) * w / per - cw / 2
+            self.rect((cx, y - 50), (cx + cw, y - 8), layer)         # chair below
+            self.rect((cx, y + d + 8), (cx + cw, y + d + 50), layer)  # chair above
+
+    def fixture_wardrobe(self, pos, w=180, d=60, layer="FIX"):
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        doors = max(2, int(round(w / 50.0)))
+        for i in range(1, doors):
+            self.line((x + w * i / doors, y), (x + w * i / doors, y + d), layer)
+
+    def fixture_fridge(self, pos, w=70, d=70, layer="FIX"):
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        self.line((x, y + d * 0.6), (x + w, y + d * 0.6), layer)
+        self.circle((x + w * 0.85, y + d * 0.78), w * 0.04, layer)
+
+    def fixture_shower(self, pos, w=90, d=90, layer="FIX"):
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        self.line((x, y), (x + w, y + d), layer)              # drain cross
+        self.line((x + w, y), (x, y + d), layer)
+        self.circle((x + w / 2, y + d / 2), w * 0.06, layer)  # drain
+
+    def fixture_bathtub(self, pos, w=170, d=75, layer="FIX"):
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        self.rect((x + 8, y + 8), (x + w - 35, y + d - 8), layer)   # basin
+        self.circle((x + w - 18, y + d / 2), 5, layer)              # tap
+
+    def fixture_stairs(self, pos, w=110, d=260, steps=12, layer="FIX"):
+        x, y = pos
+        self.rect((x, y), (x + w, y + d), layer)
+        for i in range(1, steps):
+            self.line((x, y + d * i / steps), (x + w, y + d * i / steps), layer)
+        self.line((x + w / 2, y), (x + w / 2, y + d), layer)        # walk line
+
+    def fixture_car(self, pos, w=180, d=450, layer="FIX"):
+        x, y = pos
+        self.polyline([[x + 20, y], [x + w - 20, y], [x + w, y + 60],
+                       [x + w, y + d - 90], [x + w - 25, y + d],
+                       [x + 25, y + d], [x, y + d - 90], [x, y + 60]],
+                      close=True, layer=layer)
+        self.rect((x + 25, y + d * 0.55), (x + w - 25, y + d * 0.85), layer)  # cabin
+
+    def fixture_plant(self, pos, r=35, layer="GRAMA"):
+        x, y = pos
+        self.circle((x, y), r, layer)
+        self.circle((x, y), r * 0.6, layer)
 
     # -- output ----------------------------------------------------------
     def primitives(self):
