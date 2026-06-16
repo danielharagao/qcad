@@ -98,6 +98,7 @@ class Plan:
         self._tick = 16
         self._dtxt = 30
         self._poche = True        # fill wall footprints solid (architectural poché)
+        self._buf = None          # when a list, primitives are buffered (for rotation)
         # Layer registry seeded with the standard element + material layers.
         self._layers = {}
         for name, d in LAYER_DEFS.items():
@@ -160,8 +161,65 @@ class Plan:
 
     # -- primitive recording --------------------------------------------
     def _add(self, prim):
+        if self._buf is not None:
+            self._buf.append(prim)
+            return
         self._register_layer(prim.get("layer"))
         self._prims.append(prim)
+
+    # -- rotation (used to orient fixtures via face=) --------------------
+    @staticmethod
+    def _rot_pt(x, y, cx, cy, ang):
+        a = math.radians(ang)
+        ca, sa = math.cos(a), math.sin(a)
+        dx, dy = x - cx, y - cy
+        return [cx + dx * ca - dy * sa, cy + dx * sa + dy * ca]
+
+    def _rotate_prim(self, p, c, ang):
+        cx, cy = c
+        t = p["t"]
+        if t == "line":
+            p["p1"] = self._rot_pt(p["p1"][0], p["p1"][1], cx, cy, ang)
+            p["p2"] = self._rot_pt(p["p2"][0], p["p2"][1], cx, cy, ang)
+        elif t == "circle":
+            p["c"] = self._rot_pt(p["c"][0], p["c"][1], cx, cy, ang)
+        elif t == "arc":
+            p["c"] = self._rot_pt(p["c"][0], p["c"][1], cx, cy, ang)
+            p["a0"] += ang
+            p["a1"] += ang
+        elif t == "ellipse":
+            p["c"] = self._rot_pt(p["c"][0], p["c"][1], cx, cy, ang)
+            a = math.radians(ang)
+            ca, sa = math.cos(a), math.sin(a)
+            mx, my = p["mx"], p["my"]
+            p["mx"], p["my"] = mx * ca - my * sa, mx * sa + my * ca
+        elif t in ("poly", "hatch"):
+            p["pts"] = [self._rot_pt(q[0], q[1], cx, cy, ang) for q in p["pts"]]
+            if p.get("holes"):
+                p["holes"] = [[self._rot_pt(q[0], q[1], cx, cy, ang) for q in h]
+                              for h in p["holes"]]
+        elif t == "text":
+            p["x"], p["y"] = self._rot_pt(p["x"], p["y"], cx, cy, ang)
+            p["rot"] = p.get("rot", 0) + ang
+
+    # face -> rotation angle (degrees CCW). "N" is the default orientation.
+    _FACE = {"N": 0, "W": 90, "S": 180, "E": -90,
+             "UP": 0, "LEFT": 90, "DOWN": 180, "RIGHT": -90}
+
+    def _faced(self, pos, w, d, face, draw_fn):
+        """Run draw_fn (which draws the fixture in its default 'N' orientation),
+        rotating the result about the footprint centre to point `face`."""
+        ang = self._FACE.get(str(face).upper(), 0)
+        if ang == 0:
+            draw_fn()
+            return
+        cx, cy = pos[0] + w / 2.0, pos[1] + d / 2.0
+        self._buf = []
+        draw_fn()
+        buf, self._buf = self._buf, None
+        for prim in buf:
+            self._rotate_prim(prim, (cx, cy), ang)
+            self._add(prim)
 
     # -- walls -----------------------------------------------------------
     def _segments(self, p1, p2, t, openings):
@@ -577,39 +635,58 @@ class Plan:
         x2, y2 = c2
         self.fill([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], color, pattern, angle, scale, layer)
 
-    # -- fixtures (simple bathroom/kitchen symbols) ----------------------
-    def fixture_toilet(self, pos, w=40, d=60, layer="FIX"):
-        x, y = pos
-        self.rect((x - w / 2, y), (x + w / 2, y + d * 0.25), layer)
-        self.ellipse((x, y + d * 0.6), 0.0, d * 0.35, w / (d * 0.7), layer)
+    # -- fixtures (parametric furniture symbols) -------------------------
+    # All directional fixtures take face="N"|"E"|"S"|"W" (or up/right/down/left)
+    # to orient them; "N" is the default. The fixture's "back" (headboard, sofa
+    # backrest, counter wall side, toilet tank) is at the +y/top side in "N", so
+    # face= names the wall the back sits against. pos is the footprint corner and
+    # rotation is about the footprint centre.
+    def fixture_toilet(self, pos, w=40, d=60, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x - w / 2, y), (x + w / 2, y + d * 0.25), layer)   # tank at back (+y)
+            self.ellipse((x, y + d * 0.6), 0.0, d * 0.35, w / (d * 0.7), layer)
+        # toilet pos is the bowl centre on x; normalise footprint for rotation
+        self._faced((pos[0] - w / 2.0, pos[1]), w, d, face, draw)
 
-    def fixture_sink(self, pos, w=50, d=40, layer="FIX"):
-        x, y = pos
-        self.rect((x - w / 2, y), (x + w / 2, y + d), layer)
-        self.ellipse((x, y + d / 2), w * 0.32, 0.0, 0.6, layer)
+    def fixture_sink(self, pos, w=50, d=40, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x - w / 2, y), (x + w / 2, y + d), layer)
+            self.ellipse((x, y + d / 2), w * 0.32, 0.0, 0.6, layer)
+        self._faced((pos[0] - w / 2.0, pos[1]), w, d, face, draw)
 
-    def fixture_stove(self, pos, w=60, d=60, layer="FIX"):
-        x, y = pos
-        self.rect((x - w / 2, y), (x + w / 2, y + d), layer)
-        for ox in (-1, 1):
-            for oy in (1, 3):
-                self.circle((x + ox * w * 0.22, y + oy * d * 0.25), w * 0.12, layer)
+    def fixture_stove(self, pos, w=60, d=60, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x - w / 2, y), (x + w / 2, y + d), layer)
+            for ox in (-1, 1):
+                for oy in (1, 3):
+                    self.circle((x + ox * w * 0.22, y + oy * d * 0.25), w * 0.12, layer)
+        self._faced((pos[0] - w / 2.0, pos[1]), w, d, face, draw)
 
-    def fixture_bed(self, pos, w=140, d=200, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        self.rect((x + w * 0.08, y + d * 0.72), (x + w * 0.46, y + d * 0.95), layer)
-        self.rect((x + w * 0.54, y + d * 0.72), (x + w * 0.92, y + d * 0.95), layer)
+    def fixture_bed(self, pos, w=140, d=200, layer="FIX", face="N"):
+        """Bed with the headboard + pillows at the back (+y). face= the wall the
+        headboard sits against. pos = bottom-left of the footprint."""
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            self.rect((x + w * 0.08, y + d * 0.72), (x + w * 0.46, y + d * 0.95), layer)
+            self.rect((x + w * 0.54, y + d * 0.72), (x + w * 0.92, y + d * 0.95), layer)
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_sofa(self, pos, w=210, d=90, layer="FIX"):
-        """3-seat sofa, seat side facing +y (up). pos = bottom-left corner."""
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)                 # outline
-        self.rect((x, y + d * 0.78), (x + w, y + d), layer)      # backrest (at top)
-        self.rect((x, y), (x + d * 0.16, y + d), layer)          # left arm
-        self.rect((x + w - d * 0.16, y), (x + w, y + d), layer)  # right arm
-        for k in (1, 2):
-            self.line((x + w * k / 3.0, y), (x + w * k / 3.0, y + d * 0.78), layer)
+    def fixture_sofa(self, pos, w=210, d=90, layer="FIX", face="N"):
+        """3-seat sofa; backrest at the back (+y), seat faces -y. face= the wall
+        the backrest sits against. pos = bottom-left corner."""
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)                 # outline
+            self.rect((x, y + d * 0.78), (x + w, y + d), layer)      # backrest (at back)
+            self.rect((x, y), (x + d * 0.16, y + d), layer)          # left arm
+            self.rect((x + w - d * 0.16, y), (x + w, y + d), layer)  # right arm
+            for k in (1, 2):
+                self.line((x + w * k / 3.0, y), (x + w * k / 3.0, y + d * 0.78), layer)
+        self._faced(pos, w, d, face, draw)
 
     def fixture_table(self, pos, w=160, d=90, seats=6, layer="FIX"):
         """Dining table with chairs around the long sides. pos=bottom-left."""
@@ -622,46 +699,59 @@ class Plan:
             self.rect((cx, y - 50), (cx + cw, y - 8), layer)         # chair below
             self.rect((cx, y + d + 8), (cx + cw, y + d + 50), layer)  # chair above
 
-    def fixture_wardrobe(self, pos, w=180, d=60, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        doors = max(2, int(round(w / 50.0)))
-        for i in range(1, doors):
-            self.line((x + w * i / doors, y), (x + w * i / doors, y + d), layer)
+    def fixture_wardrobe(self, pos, w=180, d=60, layer="FIX", face="N"):
+        """Wardrobe; depth side (d) sits against the wall at the back (+y)."""
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            doors = max(2, int(round(w / 50.0)))
+            for i in range(1, doors):
+                self.line((x + w * i / doors, y), (x + w * i / doors, y + d), layer)
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_fridge(self, pos, w=70, d=70, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        self.line((x, y + d * 0.6), (x + w, y + d * 0.6), layer)
-        self.circle((x + w * 0.85, y + d * 0.78), w * 0.04, layer)
+    def fixture_fridge(self, pos, w=70, d=70, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            self.line((x, y + d * 0.6), (x + w, y + d * 0.6), layer)
+            self.circle((x + w * 0.85, y + d * 0.78), w * 0.04, layer)
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_shower(self, pos, w=90, d=90, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        self.line((x, y), (x + w, y + d), layer)              # drain cross
-        self.line((x + w, y), (x, y + d), layer)
-        self.circle((x + w / 2, y + d / 2), w * 0.06, layer)  # drain
+    def fixture_shower(self, pos, w=90, d=90, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            self.line((x, y), (x + w, y + d), layer)              # drain cross
+            self.line((x + w, y), (x, y + d), layer)
+            self.circle((x + w / 2, y + d / 2), w * 0.06, layer)  # drain
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_bathtub(self, pos, w=170, d=75, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        self.rect((x + 8, y + 8), (x + w - 35, y + d - 8), layer)   # basin
-        self.circle((x + w - 18, y + d / 2), 5, layer)              # tap
+    def fixture_bathtub(self, pos, w=170, d=75, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            self.rect((x + 8, y + 8), (x + w - 35, y + d - 8), layer)   # basin
+            self.circle((x + w - 18, y + d / 2), 5, layer)              # tap
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_stairs(self, pos, w=110, d=260, steps=12, layer="FIX"):
-        x, y = pos
-        self.rect((x, y), (x + w, y + d), layer)
-        for i in range(1, steps):
-            self.line((x, y + d * i / steps), (x + w, y + d * i / steps), layer)
-        self.line((x + w / 2, y), (x + w / 2, y + d), layer)        # walk line
+    def fixture_stairs(self, pos, w=110, d=260, steps=12, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.rect((x, y), (x + w, y + d), layer)
+            for i in range(1, steps):
+                self.line((x, y + d * i / steps), (x + w, y + d * i / steps), layer)
+            self.line((x + w / 2, y), (x + w / 2, y + d), layer)        # walk line
+        self._faced(pos, w, d, face, draw)
 
-    def fixture_car(self, pos, w=180, d=450, layer="FIX"):
-        x, y = pos
-        self.polyline([[x + 20, y], [x + w - 20, y], [x + w, y + 60],
-                       [x + w, y + d - 90], [x + w - 25, y + d],
-                       [x + 25, y + d], [x, y + d - 90], [x, y + 60]],
-                      close=True, layer=layer)
-        self.rect((x + 25, y + d * 0.55), (x + w - 25, y + d * 0.85), layer)  # cabin
+    def fixture_car(self, pos, w=180, d=450, layer="FIX", face="N"):
+        def draw():
+            x, y = pos
+            self.polyline([[x + 20, y], [x + w - 20, y], [x + w, y + 60],
+                           [x + w, y + d - 90], [x + w - 25, y + d],
+                           [x + 25, y + d], [x, y + d - 90], [x, y + 60]],
+                          close=True, layer=layer)
+            self.rect((x + 25, y + d * 0.55), (x + w - 25, y + d * 0.85), layer)  # cabin
+        self._faced(pos, w, d, face, draw)
 
     def fixture_plant(self, pos, r=35, layer="GRAMA"):
         x, y = pos

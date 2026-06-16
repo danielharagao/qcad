@@ -115,7 +115,10 @@ def qcad_draw(code: str, mode: str = "add") -> str:
       plan.ellipse(c, mx, my, ratio) / plan.polyline(points, close=False)
       plan.text(s,(x,y),h,rot,halign,valign)
       plan.fixture_toilet/sink/stove/fridge/bed/sofa/table(seats=)/wardrobe/
-        shower/bathtub/stairs/car/plant   # parametric furniture on FIX
+        shower/bathtub/stairs/car/plant   # parametric furniture on FIX.
+        # Orient with face="N"|"E"|"S"|"W" (default N) = the wall the BACK sits
+        # against (headboard/backrest/counter/tank), so the front opens into the
+        # room. Push furniture to walls, e.g. fixture_bed(pos, face="S").
       plan.perimeter(W,H,t,openings)            # rectangular shell, clean corners
       plan.walls_polyline(points, t, closed)    # L / U / courtyard shells (orthogonal)
       plan.room(points, "NAME", "material")     # floor texture + name + area in m²
