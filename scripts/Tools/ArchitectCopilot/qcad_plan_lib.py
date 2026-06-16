@@ -27,10 +27,11 @@ swing arc is drawn automatically.
 import math
 
 # CAD-correct layer system: layers are organized by ELEMENT / MATERIAL and carry
-# colour + lineweight (1/100 mm) + an optional hatch PATTERN. Entities are drawn
-# ByLayer (they inherit these) — you change a material by editing its layer, not
-# entity-by-entity. Materials are conveyed by hatch PATTERN, not just by colour.
-# Each def: name -> {color:[r,g,b], lw:<1/100mm>, pattern:<hatch or None>, scale}
+# colour + lineweight (1/100 mm) + an optional hatch PATTERN + an optional
+# LINETYPE. Entities are drawn ByLayer (they inherit all of these) — you change a
+# material by editing its layer, not entity-by-entity. Materials are conveyed by
+# hatch PATTERN, not just colour; projection/axis lines by LINETYPE (dashed etc).
+# Each def: name -> {color:[r,g,b], lw:<1/100mm>, pattern:<hatch>, scale, linetype}
 LAYER_DEFS = {
     # element / annotation layers (line-work)
     "WALLS":   {"color": [255, 255, 255], "lw": 50},   # wall poché, thick
@@ -40,6 +41,12 @@ LAYER_DEFS = {
     "TEXT":    {"color": [255, 220, 0],   "lw": 0},
     "DIMS":    {"color": [255, 60, 60],   "lw": 9},
     "FILL":    {"color": [180, 180, 180], "lw": 0},
+    # line-style layers — drawn with a non-solid LINETYPE (the realism cue for
+    # things that aren't a solid cut line): centre axes, things above (projection),
+    # hidden edges below the cut plane.
+    "EIXO":    {"color": [255, 80, 80],   "lw": 9,  "linetype": "CENTER"},   # eixos
+    "PROJ":    {"color": [120, 120, 120], "lw": 13, "linetype": "DASHED"},   # projeção (vigas, peitoris acima)
+    "OCULTO":  {"color": [150, 150, 150], "lw": 13, "linetype": "HIDDEN"},   # arestas ocultas
     # material/surface layers — native QCAD hatch patterns chosen to read as the
     # real material (parquet for wood, square tiles for floors, brick-stone, etc.)
     "PISO":     {"color": [170, 170, 170], "lw": 9,  "pattern": "NET",      "scale": 30},  # porcelanato (grade)
@@ -49,16 +56,34 @@ LAYER_DEFS = {
     "AGUA":     {"color": [60, 140, 230],  "lw": 13, "pattern": "ANSI37",   "scale": 20},  # piscina
     "GRAMA":    {"color": [90, 170, 90],   "lw": 9,  "pattern": "GRASS",    "scale": 12},
     "PEDRA":    {"color": [185, 180, 160], "lw": 13, "pattern": "BRSTONE",  "scale": 14},  # pedra
+    # extra materials (all native QCAD patterns)
+    "MARMORE":  {"color": [225, 225, 230], "lw": 9,  "pattern": "AR-CONC",  "scale": 0.9}, # mármore (veios finos)
+    "GRANITO":  {"color": [160, 160, 165], "lw": 9,  "pattern": "AR-SAND",  "scale": 1.4}, # granito (granulado)
+    "CERAMICA": {"color": [200, 195, 180], "lw": 9,  "pattern": "SQUARE",   "scale": 26},  # cerâmica/azulejo
+    "CARPETE":  {"color": [150, 120, 130], "lw": 9,  "pattern": "AR-SAND",  "scale": 0.7}, # carpete (felpa)
+    "TIJOLO":   {"color": [180, 95, 70],   "lw": 13, "pattern": "AR-B816",  "scale": 1.0}, # tijolo aparente
+    "TELHA":    {"color": [170, 90, 70],   "lw": 13, "pattern": "AR-RROOF", "scale": 1.0}, # telhado
+    "METAL":    {"color": [150, 150, 160], "lw": 13, "pattern": "STEEL",    "scale": 12},  # metal/aço
+    "BRITA":    {"color": [165, 160, 150], "lw": 9,  "pattern": "GRAVEL",   "scale": 18},  # brita/cascalho
 }
 # Friendly aliases an LLM is likely to reach for -> canonical material layer
 MATERIAL_ALIASES = {
     "TILE": "PISO", "FLOOR": "PISO", "PORCELANATO": "PISO", "PISO": "PISO",
     "WOOD": "MADEIRA", "DECK": "MADEIRA", "IPE": "MADEIRA", "MADEIRA": "MADEIRA",
-    "CONCRETE": "CONCRETO", "CONCRETO": "CONCRETO",
+    "PARQUET": "MADEIRA", "LAMINADO": "MADEIRA",
+    "CONCRETE": "CONCRETO", "CONCRETO": "CONCRETO", "CIMENTO": "CONCRETO",
     "GLASS": "VIDRO", "VIDRO": "VIDRO",
     "WATER": "AGUA", "POOL": "AGUA", "AGUA": "AGUA", "PISCINA": "AGUA",
-    "GRASS": "GRAMA", "GARDEN": "GRAMA", "GRAMA": "GRAMA",
-    "STONE": "PEDRA", "GRAVEL": "PEDRA", "PEDRA": "PEDRA",
+    "GRASS": "GRAMA", "GARDEN": "GRAMA", "GRAMA": "GRAMA", "JARDIM": "GRAMA",
+    "STONE": "PEDRA", "PEDRA": "PEDRA",
+    "MARBLE": "MARMORE", "MARMORE": "MARMORE",
+    "GRANITE": "GRANITO", "GRANITO": "GRANITO",
+    "CERAMIC": "CERAMICA", "CERAMICA": "CERAMICA", "AZULEJO": "CERAMICA", "TILE_WALL": "CERAMICA",
+    "CARPET": "CARPETE", "CARPETE": "CARPETE", "RUG": "CARPETE",
+    "BRICK": "TIJOLO", "TIJOLO": "TIJOLO",
+    "ROOF": "TELHA", "TELHA": "TELHA", "TELHADO": "TELHA", "SHINGLE": "TELHA",
+    "METAL": "METAL", "STEEL": "METAL", "ACO": "METAL", "ALUMINIO": "METAL",
+    "GRAVEL": "BRITA", "BRITA": "BRITA", "CASCALHO": "BRITA",
 }
 
 
@@ -72,19 +97,24 @@ class Plan:
         self._walls_done = False
         self._tick = 16
         self._dtxt = 30
+        self._poche = True        # fill wall footprints solid (architectural poché)
         # Layer registry seeded with the standard element + material layers.
         self._layers = {}
         for name, d in LAYER_DEFS.items():
             self._layers[name] = {
                 "color": list(d["color"]), "lw": d.get("lw", 13),
-                "pattern": d.get("pattern"), "scale": d.get("scale", 1)}
+                "pattern": d.get("pattern"), "scale": d.get("scale", 1),
+                "linetype": d.get("linetype")}
 
-    def layer(self, name, color=None, lineweight=None, pattern=None, scale=None):
+    def layer(self, name, color=None, lineweight=None, pattern=None, scale=None,
+              linetype=None):
         """Define/edit a layer (the CAD-correct unit of material/element). Entities
-        on it inherit its color+lineweight (ByLayer). color=(r,g,b)/'#rrggbb',
-        lineweight in 1/100 mm (e.g. 50=0.5mm), pattern=hatch name for surfaces."""
+        on it inherit its color+lineweight+linetype (ByLayer). color=(r,g,b)/
+        '#rrggbb', lineweight in 1/100 mm (e.g. 50=0.5mm), pattern=hatch name for
+        surfaces, linetype=CONTINUOUS/DASHED/CENTER/HIDDEN/DOT/DASHDOT (for axes,
+        projection, hidden edges)."""
         d = self._layers.get(name, {"color": [180, 180, 180], "lw": 13,
-                                     "pattern": None, "scale": 1})
+                                     "pattern": None, "scale": 1, "linetype": None})
         c = self._col(color)
         if c is not None:
             d["color"] = c
@@ -94,7 +124,14 @@ class Plan:
             d["pattern"] = pattern
         if scale is not None:
             d["scale"] = scale
+        if linetype is not None:
+            d["linetype"] = linetype
         self._layers[name] = d
+
+    def poche(self, on=True):
+        """Toggle solid wall poché (filled black wall footprint, the standard
+        architectural look). On by default; turn off for an outline-only style."""
+        self._poche = bool(on)
 
     def _mat(self, material):
         """Resolve a friendly material name to a canonical material layer."""
@@ -119,7 +156,7 @@ class Plan:
     def _register_layer(self, name):
         if name and name not in self._layers:
             self._layers[name] = {"color": [180, 180, 180], "lw": 13,
-                                  "pattern": None, "scale": 1}
+                                  "pattern": None, "scale": 1, "linetype": None}
 
     # -- primitive recording --------------------------------------------
     def _add(self, prim):
@@ -230,11 +267,18 @@ class Plan:
         u = unary_union(polys)
         geoms = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
         for poly in geoms:
-            self._add({"t": "poly", "pts": _ring(poly.exterior.coords),
-                       "closed": True, "layer": "WALLS"})
-            for interior in poly.interiors:
-                self._add({"t": "poly", "pts": _ring(interior.coords),
-                           "closed": True, "layer": "WALLS"})
+            outer = _ring(poly.exterior.coords)
+            holes = [_ring(it.coords) for it in poly.interiors]
+            # Solid poché: fill the wall footprint (with any courtyard holes) so
+            # walls read as a filled cut — the standard architectural plan look.
+            if self._poche:
+                self._add({"t": "hatch", "pts": outer, "holes": holes,
+                           "pattern": "SOLID", "solid": True, "angle": 0,
+                           "scale": 1, "layer": "WALLS"})
+            # Crisp outline on top of the fill (and the only thing if poché off).
+            self._add({"t": "poly", "pts": outer, "closed": True, "layer": "WALLS"})
+            for h in holes:
+                self._add({"t": "poly", "pts": h, "closed": True, "layer": "WALLS"})
 
     # -- openings --------------------------------------------------------
     def door(self, hinge, width, closed, open):
@@ -269,8 +313,8 @@ class Plan:
     # -- annotation ------------------------------------------------------
     def label(self, text, pos, h=34, layer="TEXT", color=None):
         self._add(self._maybe_color(
-            {"t": "text", "s": text, "x": pos[0], "y": pos[1], "h": h, "rot": 0,
-             "halign": "center", "valign": "middle", "layer": layer}, color))
+            {"t": "text", "s": self._ascii(text), "x": pos[0], "y": pos[1], "h": h,
+             "rot": 0, "halign": "center", "valign": "middle", "layer": layer}, color))
 
     def _tickmark(self, x, y, ang):
         a = math.radians(ang)
@@ -300,6 +344,164 @@ class Plan:
         self._add({"t": "text", "s": str(int(round(abs(y2 - y1)))), "x": dx - 10,
                    "y": (y1 + y2) / 2.0, "h": self._dtxt, "rot": 90,
                    "halign": "center", "valign": "bottom", "layer": "DIMS"})
+
+    # -- rooms (floor material + name + area) ----------------------------
+    @staticmethod
+    def _poly_area(points):
+        """Shoelace area (absolute) of a polygon, in input units squared."""
+        pts = [list(p) for p in points]
+        n = len(pts)
+        s = 0.0
+        for i in range(n):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % n]
+            s += x1 * y2 - x2 * y1
+        return abs(s) / 2.0
+
+    @staticmethod
+    def _centroid(points):
+        pts = [list(p) for p in points]
+        n = len(pts)
+        a = cx = cy = 0.0
+        for i in range(n):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % n]
+            cr = x1 * y2 - x2 * y1
+            a += cr
+            cx += (x1 + x2) * cr
+            cy += (y1 + y2) * cr
+        if abs(a) < 1e-9:
+            xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+            return (sum(xs) / n, sum(ys) / n)
+        a *= 0.5
+        return (cx / (6 * a), cy / (6 * a))
+
+    def room(self, points, name=None, material=None, h=34, label_pos=None,
+             show_area=True):
+        """High-level room: fill the floor with `material` (any material name or
+        hatch), label its `name`, and stamp the computed area in m² below it.
+        Drawing units are cm, so area is shoelace_area / 10000. Returns the area
+        (m²). e.g. plan.room(pts, "SUITE", "wood")."""
+        if material:
+            self.surface(points, material)
+        area = self._poly_area(points) / 10000.0     # cm² -> m²
+        cx, cy = label_pos if label_pos else self._centroid(points)
+        if name:
+            self.label(name, (cx, cy + (h * 0.6 if show_area else 0)), h)
+        if show_area:
+            self.label("%.2f m²" % area, (cx, cy - h * 0.7), int(h * 0.62))
+        return area
+
+    # -- sheet / title block / annotations -------------------------------
+    def _prim_bbox(self):
+        """Bounding box (minx,miny,maxx,maxy) over all recorded primitives."""
+        self._finalize_walls()
+        xs, ys = [], []
+        for p in self._prims:
+            t = p["t"]
+            if t == "line":
+                xs += [p["p1"][0], p["p2"][0]]; ys += [p["p1"][1], p["p2"][1]]
+            elif t in ("circle", "arc"):
+                xs += [p["c"][0] - p["r"], p["c"][0] + p["r"]]
+                ys += [p["c"][1] - p["r"], p["c"][1] + p["r"]]
+            elif t == "ellipse":
+                r = max(abs(p["mx"]), abs(p["my"]))
+                xs += [p["c"][0] - r, p["c"][0] + r]; ys += [p["c"][1] - r, p["c"][1] + r]
+            elif t in ("poly", "hatch"):
+                for q in p["pts"]:
+                    xs.append(q[0]); ys.append(q[1])
+            elif t == "text":
+                xs.append(p["x"]); ys.append(p["y"])
+        if not xs:
+            return (0, 0, 1000, 1000)
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    @staticmethod
+    def _ascii(s):
+        """Drop glyphs QCAD's default font can't draw (em-dash etc.) so they don't
+        render as '?'. Keeps it readable."""
+        repl = {"—": "-", "–": "-", "º": "o", "ª": "a", "²": "2", "×": "x"}
+        out = []
+        for ch in str(s):
+            out.append(repl.get(ch, ch))
+        return "".join(out)
+
+    def sheet(self, title="PLANTA BAIXA", scale="1:50", author="", date="",
+              project="", margin=None, fields=None):
+        """Draw a drawing border + title block (carimbo). Call this LAST. The frame
+        wraps everything drawn so far and a dedicated band BELOW the drawing holds
+        the title block (so it never overlaps the plan), with the title, scale,
+        author, date and project. Extra rows via fields=[("LABEL","value"),...]."""
+        x0, y0, x1, y1 = self._prim_bbox()
+        dw, dh = max(x1 - x0, 1.0), max(y1 - y0, 1.0)
+        if margin is None:
+            margin = max(dw, dh) * 0.06
+        rows = [("PROJETO", project or title), ("ESCALA", scale)]
+        if author:
+            rows.append(("DESENHO", author))
+        if date:
+            rows.append(("DATA", date))
+        for f in (fields or []):
+            rows.append((f[0], f[1]))
+        rh = max(dw, dh) * 0.035                     # row height
+        n = len(rows) + 1                            # + header row
+        th = rh * n                                  # title-block height
+        tw = max(dw * 0.46, rh * 9)                  # title-block width
+        gap = margin * 0.6
+        # frame: content + margin, extended downward by a band for the title block
+        fx0, fx1 = x0 - margin, x1 + margin
+        fy1 = y1 + margin
+        fy0 = y0 - margin - gap - th
+        self.rect((fx0, fy0), (fx1, fy1), "DIMS")
+        inset = margin * 0.22
+        self.rect((fx0 + inset, fy0 + inset), (fx1 - inset, fy1 - inset), "DIMS")
+        # title block at the bottom-right of the reserved band
+        tbx1 = fx1 - inset
+        tbx0 = tbx1 - tw
+        tby0 = fy0 + inset
+        tby1 = tby0 + th
+        self.rect((tbx0, tby0), (tbx1, tby1), "DIMS")
+        # header (title) row, on top, taller text
+        self.line((tbx0, tby1 - rh), (tbx1, tby1 - rh), "DIMS")
+        self.text(self._ascii(title), (tbx0 + tw * 0.04, tby1 - rh * 0.5),
+                  int(rh * 0.46), halign="left", valign="middle", layer="TEXT")
+        for i, (lab, val) in enumerate(rows):
+            ry = tby0 + i * rh
+            if i > 0:
+                self.line((tbx0, ry), (tbx1, ry), "DIMS")
+            self.line((tbx0 + tw * 0.30, ry), (tbx0 + tw * 0.30, ry + rh), "DIMS")
+            self.text(self._ascii(lab), (tbx0 + tw * 0.04, ry + rh * 0.5),
+                      int(rh * 0.3), halign="left", valign="middle", layer="DIMS")
+            self.text(self._ascii(val), (tbx0 + tw * 0.34, ry + rh * 0.5),
+                      int(rh * 0.34), halign="left", valign="middle", layer="TEXT")
+        return (fx0, fy0, fx1, fy1)
+
+    def north(self, pos, r=90, layer="DIMS"):
+        """North arrow (filled triangle + 'N') pointing +y. pos = centre."""
+        x, y = pos
+        self.fill([[x, y + r], [x - r * 0.32, y - r * 0.55], [x, y - r * 0.30],
+                   [x + r * 0.32, y - r * 0.55]], color=(40, 40, 40),
+                  pattern="SOLID", layer=layer)
+        self.circle((x, y), r * 0.04, layer)
+        self.text("N", (x, y + r + r * 0.18), int(r * 0.5), halign="center",
+                  valign="bottom", layer="TEXT")
+
+    def scalebar(self, pos, total=500, segs=5, h=24, layer="DIMS"):
+        """Graphic scale bar of `total` cm in `segs` segments, alternating filled.
+        pos = bottom-left. Labels 0 and total (in metres)."""
+        x, y = pos
+        seg = float(total) / segs
+        for i in range(segs):
+            sx = x + i * seg
+            if i % 2 == 0:
+                self.fill([[sx, y], [sx + seg, y], [sx + seg, y + h], [sx, y + h]],
+                          color=(40, 40, 40), pattern="SOLID", layer=layer)
+            else:
+                self.rect((sx, y), (sx + seg, y + h), layer)
+        self.rect((x, y), (x + total, y + h), layer)
+        self.text("0", (x, y - 8), int(h * 0.9), halign="center", valign="top", layer="TEXT")
+        self.text("%g m" % (total / 100.0), (x + total, y - 8), int(h * 0.9),
+                  halign="center", valign="top", layer="TEXT")
 
     # -- colour ----------------------------------------------------------
     @staticmethod
@@ -357,7 +559,7 @@ class Plan:
 
     def text(self, s, pos, h=34, rot=0, halign="left", valign="bottom", layer="TEXT", color=None):
         self._add(self._maybe_color(
-            {"t": "text", "s": s, "x": pos[0], "y": pos[1], "h": h, "rot": rot,
+            {"t": "text", "s": self._ascii(s), "x": pos[0], "y": pos[1], "h": h, "rot": rot,
              "halign": halign, "valign": valign, "layer": layer}, color))
 
     # -- fill / hatch (texture) ------------------------------------------
@@ -484,6 +686,10 @@ class Plan:
         from ezdxf.enums import TextEntityAlignment
         prims = self.primitives()
         doc = ezdxf.new("R2010", setup=True)
+        try:
+            doc.units = 5          # centimetres — the Plan library's working unit
+        except Exception:
+            pass
         msp = doc.modelspace()
         # Create every registered layer with its colour + lineweight (thawed).
         # Entities are ByLayer, so this is what defines each material's look.
@@ -493,6 +699,14 @@ class Plan:
             try:
                 lyr.rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
                 lyr.dxf.lineweight = int(d.get("lw", 13))   # 1/100 mm
+                lt = d.get("linetype")
+                if lt and lt.upper() != "CONTINUOUS":
+                    try:
+                        if lt not in doc.linetypes:
+                            doc.linetypes.add(lt, pattern=[0.0])
+                        lyr.dxf.linetype = lt
+                    except Exception:
+                        pass
                 lyr.on()
                 lyr.thaw()
             except Exception:
@@ -531,7 +745,9 @@ class Plan:
                              dxfattribs=attribs(p)).set_placement((p["x"], p["y"]), align=align)
             elif t == "hatch":
                 ha = msp.add_hatch(dxfattribs=attribs(p))
-                ha.paths.add_polyline_path(p["pts"], is_closed=True)
+                ha.paths.add_polyline_path(p["pts"], is_closed=True, flags=1)
+                for hole in p.get("holes", []):
+                    ha.paths.add_polyline_path(hole, is_closed=True, flags=0)
                 if not p.get("solid", True):
                     try:
                         ha.set_pattern_fill(p.get("pattern", "ANSI31"),

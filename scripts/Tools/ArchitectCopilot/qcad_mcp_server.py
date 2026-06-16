@@ -114,25 +114,33 @@ def qcad_draw(code: str, mode: str = "add") -> str:
       plan.line(p1,p2) / plan.rect(c1,c2) / plan.circle(c,r) / plan.arc(c,r,a0,a1)
       plan.ellipse(c, mx, my, ratio) / plan.polyline(points, close=False)
       plan.text(s,(x,y),h,rot,halign,valign)
-      plan.fixture_toilet((x,y)) / fixture_sink / fixture_stove / fixture_bed((x,y))
+      plan.fixture_toilet/sink/stove/fridge/bed/sofa/table(seats=)/wardrobe/
+        shower/bathtub/stairs/car/plant   # parametric furniture on FIX
       plan.perimeter(W,H,t,openings)            # rectangular shell, clean corners
       plan.walls_polyline(points, t, closed)    # L / U / courtyard shells (orthogonal)
+      plan.room(points, "NAME", "material")     # floor texture + name + area in m²
+      plan.north((x,y)) / plan.scalebar((x,y), total_cm)   # north arrow, scale bar
+      plan.sheet(title, scale, author=, date=, project=)   # border + title block (LAST)
 
     MATERIALS THE CAD-CORRECT WAY — organize by ELEMENT/MATERIAL on layers; draw
     entities ByLayer (they inherit the layer's colour + lineweight); show materials
     with hatch PATTERNS, not per-entity solid colours.
-      • Standard layers exist: WALLS, DOORS, WINDOWS, FIX, TEXT, DIMS (elements) and
-        PISO, MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA (materials, each with a
-        colour + lineweight + hatch pattern). Pass layer="MADEIRA" etc.
-      • plan.surface(points, "wood"|"tile"|"water"|"grass"|"concrete"|"stone") fills
-        an area with that MATERIAL'S texture (hatch) on its layer, ByLayer colour —
-        e.g. plan.surface(deck_pts, "wood"); plan.surface(pool_pts, "water").
-      • plan.layer(name, color=(r,g,b), lineweight=50, pattern="ANSI31") to define a
-        new material/element layer (lineweight in 1/100 mm; 50 = 0.5 mm).
-      • Prefer this over per-entity colour. Only pass color=(r,g,b) to a draw method
-        for a one-off override; normally let it be ByLayer.
-      • Low-level fills still exist: plan.fill/fill_rect(points, pattern=...) with
-        ANSI31 (diagonal), ANSI37 (crosshatch), BRICK, EARTH, GRASS, NET.
+      • Standard layers exist: WALLS, DOORS, WINDOWS, FIX, TEXT, DIMS (elements);
+        line-style layers EIXO (CENTER axis), PROJ (DASHED, things above), OCULTO
+        (HIDDEN); and materials PISO, MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA,
+        MARMORE, GRANITO, CERAMICA, CARPETE, TIJOLO, TELHA, METAL, BRITA (each with a
+        colour + lineweight + hatch). Pass layer="MADEIRA" / layer="PROJ" etc.
+      • BEST per room: plan.room(points, "SUITE", "wood") fills the floor with the
+        material texture, labels the name AND stamps the area in m².
+      • plan.surface(points, material) fills an area with a material texture (no
+        label). Names: wood|tile|water|grass|concrete|stone|marble|granite|ceramic|
+        carpet|brick|roof|metal|gravel (or any QCAD pattern via pattern=NAME).
+      • WALLS auto-fill as solid black POCHÉ (standard plan look); plan.poche(False)
+        for outline-only.
+      • plan.layer(name, color=(r,g,b), lineweight=50, pattern="ANSI31",
+        linetype="DASHED") defines a layer (lineweight in 1/100 mm; 50 = 0.5 mm).
+      • Prefer ByLayer over per-entity colour. color=(r,g,b) on a draw method is a
+        one-off override. Low-level plan.fill/fill_rect(points, pattern=...) still exist.
 
     Use REALISTIC cm dimensions and respect ergonomics/clearances (door swing >=90,
     walk-through >=70, bed side >=60, kitchen triangle, bathroom clearances). Every
@@ -216,8 +224,12 @@ def qcad_patterns(filter: str = "") -> str:
 
 @mcp.tool()
 def qcad_export(fmt: str = "pdf", path: str = "") -> str:
-    """Export the open drawing to a file. fmt = pdf | png | svg | dxf | dwg.
-    path defaults to ~/Desktop/qcad-export.<fmt>. Use to deliver the final plan."""
+    """Deliver the open drawing as a file. fmt = pdf | png | dxf | dwg | svg.
+
+    pdf = a real vector A3 sheet, auto-fit and snapped to a standard architectural
+    scale (e.g. 1:50) — pair it with plan.sheet() for a titled deliverable. png =
+    quick raster. dxf/dwg = editable CAD. path defaults to ~/Desktop/qcad-export.<fmt>.
+    """
     fmt = (fmt or "pdf").lower().lstrip(".")
     if not path:
         path = os.path.join(os.path.expanduser("~"), "Desktop", "qcad-export." + fmt)

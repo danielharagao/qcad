@@ -134,14 +134,21 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "    MATERIAL on layers and draw ByLayer (entities inherit the layer's colour +\n"
     + "    lineweight). Do NOT colour each entity or organize 'by colour' — that's wrong.\n"
     + "    Show materials with hatch PATTERNS (texture), not solid colour fills.\n"
-    + "    - Standard layers: WALLS/DOORS/WINDOWS/FIX/TEXT/DIMS (elements) and PISO,\n"
-    + "      MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA (materials, each pre-set with\n"
+    + "    - Standard layers: WALLS/DOORS/WINDOWS/FIX/TEXT/DIMS (elements) and the\n"
+    + "      materials PISO, MADEIRA, CONCRETO, VIDRO, AGUA, GRAMA, PEDRA, MARMORE,\n"
+    + "      GRANITO, CERAMICA, CARPETE, TIJOLO, TELHA, METAL, BRITA (each pre-set with\n"
     + "      a colour + lineweight + hatch). Put geometry on the right layer (layer=…).\n"
-    + "    - plan.surface(points, \"wood\"|\"tile\"|\"water\"|\"grass\"|\"concrete\"|\"stone\")\n"
-    + "      fills an area with that MATERIAL'S texture on its layer, ByLayer — e.g.\n"
-    + "      plan.surface(deck_pts, \"wood\"); plan.surface(pool_pts, \"water\").\n"
-    + "    - plan.layer(name, color=(r,g,b), lineweight=50, pattern=\"ANSI31\") defines a\n"
-    + "      new material/element layer (lineweight 1/100 mm; walls 50, fine lines 9).\n"
+    + "    - BEST for rooms: plan.room(points, \"NAME\", \"material\") fills the floor with\n"
+    + "      the material's texture, labels the name, AND stamps the area in m² — one\n"
+    + "      call per room. e.g. plan.room(suite_pts, \"SUITE\", \"wood\").\n"
+    + "    - plan.surface(points, material) just fills an area with a material's texture\n"
+    + "      (no label). Material names: wood|tile|water|grass|concrete|stone|marble|\n"
+    + "      granite|ceramic|carpet|brick|roof|metal|gravel (or any QCAD pattern via\n"
+    + "      pattern=NAME). e.g. plan.surface(deck_pts, \"wood\"); plan.surface(pool,\"water\").\n"
+    + "    - WALLS render as solid black POCHÉ (filled cut) automatically — the standard\n"
+    + "      plan look. plan.poche(False) turns it off for an outline-only style.\n"
+    + "    - plan.layer(name, color=(r,g,b), lineweight=50, pattern=\"ANSI31\",\n"
+    + "      linetype=\"DASHED\") defines a layer (lineweight 1/100 mm; walls 50, fine 9).\n"
     + "    - Pass color=(r,g,b) to a draw call ONLY for a rare one-off override; default\n"
     + "      is ByLayer. Low-level plan.fill/fill_rect(points, pattern=…) still exist.\n"
     + "  • EXTERIOR WALLS — use plan.perimeter() for guaranteed clean corners:\n"
@@ -221,6 +228,20 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "  • The house need NOT be rectangular: plan.walls_polyline([(x,y),...], t, closed=True)\n"
     + "    builds L-/U-/courtyard shells (orthogonal vertices) with clean joins.\n\n"
 
+    + "PRESENTATION — make plans look professional (do these for a finished plan):\n"
+    + "  • LINETYPES: pre-set line layers EIXO (centre axis, CENTER), PROJ (things above\n"
+    + "    the cut plane like beams/overhead, DASHED), OCULTO (hidden edges, HIDDEN).\n"
+    + "    Put a line there to get its dash pattern, e.g. plan.line(a,b,\"PROJ\") for a\n"
+    + "    beam shown dashed, plan.line(a,b,\"EIXO\") for a symmetry axis.\n"
+    + "  • plan.room(...) already stamps each room's area in m² — prefer it over bare\n"
+    + "    labels so areas are always shown.\n"
+    + "  • NORTH + SCALE: plan.north((x,y)) draws a north arrow; plan.scalebar((x,y),\n"
+    + "    total_cm) a graphic scale bar. Put them in a free area beside the plan.\n"
+    + "  • TITLE BLOCK: call plan.sheet(title, scale, author=, date=, project=) LAST.\n"
+    + "    It draws a drawing border + a title block (carimbo) in a band below the plan\n"
+    + "    (never overlapping it). e.g. plan.sheet(\"PLANTA BAIXA\",\"1:50\",project=\"Casa X\").\n"
+    + "  • Keep text ASCII-ish; avoid characters the CAD font lacks (— is auto-fixed to -).\n\n"
+
     + "MORE TOOLS (besides qcad_command/qcad_draw/qcad_view):\n"
     + "  • qcad_query(what): read the live drawing — \"extents\" (bounding box+size),\n"
     + "    \"layers\" (per-layer entity counts), \"count\". Use it to self-verify sizes and\n"
@@ -232,8 +253,9 @@ ArchitectCopilot.SYSTEM_PROMPT =
     + "    Pass any to plan.surface(pts, mat, pattern=NAME) or plan.layer(name,\n"
     + "    pattern=NAME). e.g. AR-PARQ1/JIS_WOOD (wood), NET/SQUARE/HEXAGONS (tile),\n"
     + "    BRSTONE/GRAVEL (stone), BRICK, GRASS. Search with a filter like \"wood\".\n"
-    + "  • qcad_export(fmt, path): export the drawing — pdf | png | svg | dxf | dwg.\n"
-    + "    Use to deliver the final plan to the user.\n\n"
+    + "  • qcad_export(fmt, path): deliver the final plan — pdf | png | dxf | dwg | svg.\n"
+    + "    pdf produces a real vector A3 sheet auto-fit to a standard scale (e.g. 1:50);\n"
+    + "    pair it with plan.sheet() for a titled deliverable. png is a quick raster.\n\n"
 
     + "SEEING YOUR WORK:\n"
     + "  • You have a second tool, `qcad_view`, that renders the current drawing to an\n"
@@ -1541,7 +1563,13 @@ ArchitectCopilot.ensureDocument = function() {
         var act = RGuiAction.getByScriptFile("scripts/File/NewFile/NewFile.js");
         if (!isNull(act)) {
             act.slotTrigger();
-            ArchitectCopilot.fileLog("auto-created new document");
+            // The Plan library works in centimetres — declare it so dimensions and
+            // PDF print scale are meaningful.
+            try {
+                var di = EAction.getDocumentInterface();
+                if (!isNull(di)) di.getDocument().setUnit(RS.Centimeter);
+            } catch (eu) { ArchitectCopilot.fileLog("setUnit: " + eu); }
+            ArchitectCopilot.fileLog("auto-created new document (cm)");
         }
     } catch (e) {
         ArchitectCopilot.fileLog("ensureDocument error: " + e);
@@ -1570,6 +1598,10 @@ ArchitectCopilot.captureView = function(path) {
         if (isNull(view)) return "error: no graphics view available";
         var scene = view.getScene();
         if (isNull(scene)) return "error: no scene available";
+        // Render real (non-screen) linetypes so dashed/centre lines show in the
+        // preview just like they do in the PDF, not as solid lines.
+        try { scene.setScreenBasedLinetypes(false); } catch (e) {}
+        try { scene.setDraftMode(false); } catch (e) {}
         try { scene.regenerate(); } catch (e) {}
         var props = {
             width: 1400,
@@ -1635,12 +1667,18 @@ ArchitectCopilot.addHatch = function(p) {
         var solid = (p.solid !== false);
         hd.setSolid(solid);
         hd.setPatternName(solid ? "SOLID" : (p.pattern || "ANSI31"));
-        hd.newLoop();
-        var pts = p.pts;
-        for (var k = 0; k < pts.length; k++) {
-            var a = pts[k];
-            var b = pts[(k + 1) % pts.length];
-            hd.addBoundary(new RLine(new RVector(a[0], a[1]), new RVector(b[0], b[1])));
+        var addLoop = function(pts) {
+            hd.newLoop();
+            for (var k = 0; k < pts.length; k++) {
+                var a = pts[k];
+                var b = pts[(k + 1) % pts.length];
+                hd.addBoundary(new RLine(new RVector(a[0], a[1]), new RVector(b[0], b[1])));
+            }
+        };
+        addLoop(p.pts);
+        var holes = p.holes || [];
+        for (var hh = 0; hh < holes.length; hh++) {
+            if (holes[hh] && holes[hh].length >= 3) addLoop(holes[hh]);
         }
         var ent = new RHatchEntity(doc, hd);
         var lid = doc.getLayerId(p.layer || "FILL");
@@ -1693,22 +1731,52 @@ ArchitectCopilot.lwEnum = function(lw) {
 // Read a layer def (new {color,lw,...} format, or legacy [r,g,b]) -> {col, lw}.
 ArchitectCopilot.layerDef = function(layersMap, name) {
     var d = layersMap ? layersMap[name] : null;
-    if (d && d.length === 3) return { col: new RColor(d[0], d[1], d[2]), lw: 13 };   // legacy
+    if (d && d.length === 3) return { col: new RColor(d[0], d[1], d[2]), lw: 13, lt: null };   // legacy
     if (d && d.color && d.color.length === 3) {
         return { col: new RColor(d.color[0], d.color[1], d.color[2]),
-                 lw: (typeof(d.lw) === "number") ? d.lw : 13 };
+                 lw: (typeof(d.lw) === "number") ? d.lw : 13,
+                 lt: (typeof(d.linetype) === "string") ? d.linetype : null };
     }
     return null;
 };
 
+// Make sure all of QCAD's default linetypes (DASHED/CENTER/HIDDEN/...) are loaded
+// into the open document, so layers can reference them by name. Runs once.
+ArchitectCopilot.ensureLinetypes = function(di) {
+    try {
+        var doc = di.getDocument();
+        if (doc.getLinetypeId("DASHED") !== RObject.INVALID_ID &&
+            doc.getLinetypeId("CENTER") !== RObject.INVALID_ID &&
+            doc.getLinetypeId("HIDDEN") !== RObject.INVALID_ID) {
+            return; // already present
+        }
+        var lts = doc.getDefaultLinetypes();
+        var op = new RAddObjectsOperation();
+        for (var i = 0; i < lts.length; i++) op.addObject(lts[i]);
+        di.applyOperation(op);
+    } catch (e) { ArchitectCopilot.fileLog("ensureLinetypes: " + e); }
+};
+
+// Resolve a linetype name to an id in the open doc; falls back to CONTINUOUS.
+ArchitectCopilot.linetypeId = function(doc, name) {
+    if (!name) return doc.getLinetypeId("CONTINUOUS");
+    try {
+        var id = doc.getLinetypeId(name);
+        if (id !== undefined && id !== null && id !== RObject.INVALID_ID) return id;
+    } catch (e) {}
+    return doc.getLinetypeId("CONTINUOUS");
+};
+
 ArchitectCopilot.ensureLayers = function(di, layersMap) {
     if (isNull(layersMap)) return;
+    ArchitectCopilot.ensureLinetypes(di);
     var doc = di.getDocument();
     for (var name in layersMap) {
         if (!layersMap.hasOwnProperty(name) || name === "0") continue;
         var def = ArchitectCopilot.layerDef(layersMap, name);
         var col = def ? def.col : new RColor(255, 255, 255);
         var lw = ArchitectCopilot.lwEnum(def ? def.lw : 13);
+        var ltId = ArchitectCopilot.linetypeId(doc, def ? def.lt : null);
         try {
             if (doc.hasLayer(name)) {
                 var ex = doc.queryLayer(name);
@@ -1717,13 +1785,13 @@ ArchitectCopilot.ensureLayers = function(di, layersMap) {
                     if (typeof(ex.setOff) === "function") ex.setOff(false);
                     ex.setColor(col);
                     if (typeof(ex.setLineweight) === "function") ex.setLineweight(lw);
+                    if (typeof(ex.setLinetypeId) === "function") ex.setLinetypeId(ltId);
                     var mop = new RModifyObjectsOperation();
                     mop.addObject(ex);
                     di.applyOperation(mop);
                 }
             } else {
-                var layer = new RLayer(doc, name, false, false, col,
-                    doc.getLinetypeId("CONTINUOUS"), lw, false);
+                var layer = new RLayer(doc, name, false, false, col, ltId, lw, false);
                 di.applyOperation(new RAddObjectOperation(layer, false));
             }
         } catch (e) { ArchitectCopilot.fileLog("ensureLayer " + name + ": " + e); }
@@ -1805,7 +1873,65 @@ ArchitectCopilot.doErase = function(spec) {
     } catch (e) { return "error: " + e; }
 };
 
-// Export the open drawing to PNG (raster) or DXF/DWG/SVG/PDF (vector/cad).
+// Real vector PDF via QCAD's Print pipeline, auto-fit to an A3 page (orientation
+// chosen from the drawing's aspect), centred with a small margin.
+ArchitectCopilot.doExportPdf = function(di, path) {
+    try {
+        include("scripts/File/Print/Print.js");
+        var doc = di.getDocument();
+        di.deselectAll();
+        ArchitectCopilot.thawAllLayers(di);
+        var bb = doc.getBoundingBox(true, true);
+        var bw = bb.getWidth(), bh = bb.getHeight();
+        if (!(bw > 0) || !(bh > 0)) return "error: nothing to export";
+        var landscape = bw >= bh;
+        var pW = landscape ? 420 : 297, pH = landscape ? 297 : 420;   // A3 mm
+        var u = doc.getUnit();
+        var unitScale = RUnit.convert(1.0, u, RS.Millimeter);
+        // The Plan library always works in centimetres; a unitless document then
+        // has no scale info, so assume cm (1 unit = 10 mm) for a sane print scale.
+        if (!(unitScale > 0) || u === RS.None) unitScale = 10.0;
+        var margin = 12;                                              // mm
+        var fit = Math.min((pW - 2 * margin) / (bw * unitScale),
+                           (pH - 2 * margin) / (bh * unitScale));
+        // Snap to the nearest standard architectural scale that still fits.
+        var std = [10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500, 1000];
+        var need = Math.ceil(1.0 / fit);
+        var nDenom = std[std.length - 1];
+        for (var si = 0; si < std.length; si++) { if (std[si] >= need) { nDenom = std[si]; break; } }
+        var scaleVal = 1.0 / nDenom;                                  // clean 1:N ratio
+        var spanX = pW / (unitScale * scaleVal);
+        var spanY = pH / (unitScale * scaleVal);
+        doc.setVariable("PageSettings/PaperUnit", RS.Millimeter);
+        doc.setVariable("PageSettings/PaperWidth", landscape ? pH : pW);   // portrait dims
+        doc.setVariable("PageSettings/PaperHeight", landscape ? pW : pH);
+        doc.setVariable("PageSettings/PageOrientation", landscape ? "Landscape" : "Portrait");
+        doc.setVariable("ColorSettings/ColorMode", "FullColor");
+        doc.setVariable("ColorSettings/BackgroundColor", new RColor("white"));
+        doc.setVariable("PageSettings/Scale", "1:" + nDenom);
+        doc.setVariable("PageSettings/OffsetX", bb.getMinimum().x - (spanX - bw) / 2.0);
+        doc.setVariable("PageSettings/OffsetY", bb.getMinimum().y - (spanY - bh) / 2.0);
+        doc.setVariable("MultiPageSettings/Rows", 1);
+        doc.setVariable("MultiPageSettings/Columns", 1);
+        doc.setVariable("MultiPageSettings/PrintCropMarks", false);
+        doc.setVariable("PageTagSettings/EnablePageTags", false);
+        // NB: do NOT destr() the scene/view — RGraphicsSceneQt registers itself
+        // with the document interface; destroying it leaves a dangling pointer in
+        // di's scene list that crashes the next deselectAll(). Let GC reclaim them.
+        var scene = new RGraphicsSceneQt(di);
+        var view = new RGraphicsViewImage();
+        view.setScene(scene);
+        var pr = new Print(undefined, doc, view);
+        var ok = pr.print(path);
+        if (ok && new QFileInfo(path).exists()) {
+            return "ok: exported " + path + " (A3 " + (landscape ? "landscape" : "portrait") +
+                   ", scale 1:" + nDenom + ")";
+        }
+        return "error: PDF print failed";
+    } catch (e) { return "error: " + e; }
+};
+
+// Export the open drawing to PNG (raster), PDF (vector print) or DXF/DWG/SVG.
 ArchitectCopilot.doExport = function(spec) {
     var di = EAction.getDocumentInterface();
     if (isNull(di)) return "error: no document";
@@ -1817,8 +1943,11 @@ ArchitectCopilot.doExport = function(spec) {
             var r = ArchitectCopilot.captureView(path);
             return (("" + r).indexOf("error") === 0) ? r : ("ok: exported " + path);
         }
+        if (fmt === "pdf") {
+            return ArchitectCopilot.doExportPdf(di, path);
+        }
         var names = { dxf: "R27 (2013) DXF", dwg: "R27 (2013) DWG",
-                      svg: "Scalable Vector Graphics (SVG)", pdf: "PDF" };
+                      svg: "Scalable Vector Graphics (SVG)" };
         var tries = [names[fmt], fmt.toUpperCase(), ""];
         for (var i = 0; i < tries.length; i++) {
             try {
@@ -1877,10 +2006,16 @@ ArchitectCopilot.addEntitiesFromFile = function(path, replace) {
         // layer's colour + lineweight) — the CAD-correct way. Only override when
         // the primitive carries an explicit colour.
         var byLayer = new RColor(RColor.ByLayer);
+        var byLayerLt = doc.getLinetypeId("BYLAYER");
         var place = function(ent, p) {
             if (isNull(ent)) return false;
             var lid = doc.getLayerId(p.layer || "0");
             if (lid !== undefined && lid !== null) ent.setLayerId(lid);
+            // Inherit the layer's linetype (so EIXO=CENTER, PROJ=DASHED etc. show).
+            if (typeof(ent.setLinetypeId) === "function" &&
+                byLayerLt !== undefined && byLayerLt !== null) {
+                ent.setLinetypeId(byLayerLt);
+            }
             if (p.color && p.color.length === 3) {
                 ent.setColor(new RColor(p.color[0], p.color[1], p.color[2]));
             } else {
