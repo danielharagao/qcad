@@ -1978,6 +1978,10 @@ ArchitectCopilot.addEntitiesFromFile = function(path, replace) {
     }
     var di = EAction.getDocumentInterface();
     if (isNull(di)) return "error: no document";
+    // The Plan library always emits centimetres — declare it on the document so
+    // dimensions, snapping and the PDF print scale are correct (QCAD's blank
+    // startup document defaults to millimetres).
+    try { di.getDocument().setUnit(RS.Centimeter); } catch (eu) {}
     var txt = ArchitectCopilot.readFileText(path);
     if (txt === null) return "error: could not read primitives file";
     var data;
